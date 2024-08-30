@@ -13,7 +13,7 @@ These scripts are specifically designed to run within the Jamf MDM environment. 
 
   **Note**: Uses SwiftDialog to prompt users for password
 
-  ![IMAGE OF SCRIPT](IMAGELINKT)
+  ![Escrow Example](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2e7ed2338fcc7850272a8908b1f91b5c865d3527/Jamf%20Only%20Scripts/images/Example_BootStrapToken_Escrow.png)
 
 ### 2. [Jamf Extension Attributes Scripts](SCRIPTLINK)
 
