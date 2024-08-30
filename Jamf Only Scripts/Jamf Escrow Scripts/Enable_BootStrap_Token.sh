@@ -4,7 +4,7 @@
 # # Enable BootStrap Token Jamf
 #
 # Purpose: Fixes the jamf error "Bootstrap Token functionality is not supported on the server"
-# 
+#
 # https://github.com/cocopuff2u
 #
 # To Run: Sudo bash /PATH/TO/SCRIPT.SH
@@ -96,7 +96,7 @@ get_id() {
         --header 'Accept: text/xml' \
         --header "Authorization: Bearer $bearer_token" \
         | xmllint --xpath '/computer/general/id/text()' -)
-    
+
     # Check if the computer ID is successfully retrieved
     if [ -z "$computerId" ]; then
         log "Error: Failed to retrieve computer ID. Response: $(curl -s --request GET --url "${url}/JSSResource/computers/serialnumber/$serial_number" --header 'Accept: text/xml' --header "Authorization: Bearer $bearer_token")"
