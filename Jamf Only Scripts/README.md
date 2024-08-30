@@ -4,7 +4,7 @@ These scripts are specifically designed to run within the Jamf MDM environment. 
 
 ## Available Scripts
 
-### 1. [Jamf Bootstraptoken Scripts](SCRIPTLINK)
+### 1. [Jamf Bootstraptoken Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/5add3d0e6f4e9037934f6d313e1e83468104536b/Jamf%20Only%20Scripts/Jamf%20Escrow%20Scripts)
 
 - **Description**: This set of scripts manages Bootstraptokens for devices in Jamf. They perform three main tasks:
   - **Enable Bootstraptoken**: Activates the Bootstraptoken for the device.
@@ -15,7 +15,7 @@ These scripts are specifically designed to run within the Jamf MDM environment. 
 
   ![Escrow Example](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2e7ed2338fcc7850272a8908b1f91b5c865d3527/Jamf%20Only%20Scripts/images/Example_BootStrapToken_Escrow.png)
 
-### 2. [Jamf Extension Attributes Scripts](SCRIPTLINK)
+### 2. [Jamf Extension Attributes Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/5add3d0e6f4e9037934f6d313e1e83468104536b/Jamf%20Only%20Scripts/Jamf%20Extension%20Attributes)
 
 - **Description**: A collection of scripts designed to extract extension attribute information from the machine and upload it to Jamf. These scripts help in gathering and managing detailed device attributes.
 
