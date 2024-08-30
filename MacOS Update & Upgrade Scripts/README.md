@@ -14,8 +14,8 @@ Future Features: I'd like to curl a progress bar for the background download via
 <br />
 - Customizable URL, Title, Logo, message, & Buttons
 
-## Requirements 
-[Jamf Pro](https://www.jamf.com/) 
+## Requirements
+[Jamf Pro](https://www.jamf.com/)
 <br />
 <br />
 
