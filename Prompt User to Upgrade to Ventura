@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# build 1.0 11/2/22 - This script is designed to prompt the user to download MacOS Monterey in the background direct from Appe
+# build 1.1 11/3/22 - Added Set -x to log results, also added recon to a proceed option
+# build 1.2 11/4/22 - added a nested if than statement to catch if the applications was already there, added curl to download direct from Apple
+# Build 1.3 4/11/23 - Upgraded Script to run for Ventura Deployment now
+
+#Built by Cody Keats
+
+#This pulls current user to scope the path of the brandingimage
+currentUser=$(/bin/echo 'show State:/Users/ConsoleUser' | /usr/sbin/scutil | /usr/bin/awk '/Name / { print $3 }')
+# This will set a variable for the jamfHelper
+jamfHelper="/Library/Application Support/JAMF/bin/jamfHelper.app/Contents/MacOS/jamfHelper"
+#Window Type picks out how it is presented. Note: Your choices include utility, hud or fs
+windowType="utility"
+#Note: This can be BASE64, a Local File or a URL. If a URL the file needs to curl down prior to jamfHelper
+icon="/Users/$currentUser/Library/Application Support/com.jamfsoftware.selfservice.mac/Documents/Images/brandingimage.png"
+#"Window Title"
+title="MacOS System Admin Reminder"
+#"Window Heading"
+heading="MacOS Ventura Upgrade"
+#"Window Message"
+description="Currently we are in the process of upgrading those that can support MacOS Ventura. Your machine has been flagged for the upgrade.
+
+This upgrade will download in the background with no user input needed. Once downloaded you can do the upgrade at your leisure.
+
+If the upgrade fails to download or install this prompt will rerun on next weekly check-in.
+
+The upgrade will prompt when the download is complete or the MacOS upgrade will be located in the applications folder called 'install MacOS Ventura'."
+
+#Second "Window Message"
+descriptionno="Upgrade reminder will be pushed weekly until the upgrade is complete.
+
+If you are unable to upgrade due to limitations please reach out to XXXXXXXXXX via teams or email with more details."
+
+#"Button1"
+button1="Proceed"
+#"Button1no"
+button1no="Close"
+#"Button2"
+button2="Decline"
+
+#Set the default button. Your choices are 1 or 2. button2 is for the decline button on the second window. Note: Default and Cancel buttons let the user press the "Return" key or "Escape" key
+#Note: Double digit Parameters should be enclosed with {}
+#This will set a variable for jamfHelper to do an action...
+userChoice=$("$jamfHelper" -windowType "$windowType" -icon "$icon" -title "$title" -heading "$heading" -description "$description" -button1 "$button1" -button2 "$button2" -defaultButton 1 -cancelButton 2)
+if [[ "$userChoice" == "0" ]]; then
+#Actions for Button 1 Go Here
+echo "proceed"
+        if [ -d "/Applications/Install MacOS Ventura.app" ] ;
+        then
+                open "/Applications/Install MacOS Ventura.app"
+                else
+                curl "https://swcdn.apple.com/content/downloads/63/49/032-84910-A_3SSTBN1HDA/h89vitwfbzt54jcbwpfwkmrn12smedicny/InstallAssistant.pkg" -o /tmp/InstallAssistant.pkg
+                sleep 10
+                installer -pkg /tmp/InstallAssistant.pkg -target /
+                sleep 20
+                open "/Applications/Install MacOS Ventura.app"
+                jamf recon
+        fi
+else
+echo "declined"
+"$jamfHelper" -windowType "$windowType" -icon "$icon" -title "$title" -heading "$heading" -description "$descriptionno" -button1 "$button1no"  -defaultButton 1
+fi
+
+exit 0
