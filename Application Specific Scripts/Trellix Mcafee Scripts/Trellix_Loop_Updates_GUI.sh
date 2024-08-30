@@ -38,7 +38,7 @@ description="Choose the number of loops for executing Trellix updates"
 #Help Message
 helpmessage="This script is crafted to automate essential Trellix update functions on MacOS in conjunction with the EPO server. The loop iterates through all permissible commands to EPO, incorporating a sleep function between each command for optimal execution."
 # Script Log Location [ /var/log/org.YOURCOMPANY.log ] (i.e., Your organization's default location for client-side logs)
-scriptLog="${4:-"/var/log/org.trellixloopupdate.log"}"                       
+scriptLog="${4:-"/var/log/org.trellixloopupdate.log"}"
 
 #"Button1"
 button1="Exit"
