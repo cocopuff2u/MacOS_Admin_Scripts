@@ -1,30 +1,14 @@
-# Trellix/McAfee Scripts
+# Keychain & Certificate Scripts
 
-These scripts are tailored to assist with various Trellix/McAfee tasks on macOS.
+These scripts are designed to assist with various tasks related to the keychain and certificate on the macOS. 
 
 ## Available Scripts
 
-### 1. [Trellix Loop Updates GUI](SCRIPTLINK)
+### 1. [Import DoD Certs](LINK)
 
-- **Description**: Provides a user-friendly GUI to select the number of loops for executing Trellix update commands.
+- **Description**: Imports the DoD Certificates into the system keychain
 
-**Note**: This GUI is powered by [SwiftDialog](https://github.com/swiftDialog/swiftDialog).
-
-  ![Trellix Loop Image](LINK)
-
-### 2. [Trellix Loop Update Hidden](SCRIPTLINK)
-
-- **Description**: Executes the Trellix update command in the background, hidden from the user’s view, based on a script variable.
-
-### 3. [Trellix Loop Updates CLI](SCRIPTLINK)
-
-- **Description**: Offers a terminal/CLI interface for users to input the number of loops to perform for Trellix update commands.
-
-### 4. [Trellix Loop for Modules](SCRIPTLINK)
-
-- **Description**: Loops 50 times with a GUI, checking for the presence of all Trellix modules. Recommended for use during initial installations.
-
-**Note**: This GUI is powered by [SwiftDialog](https://github.com/swiftDialog/swiftDialog).
+**Note**: Will prompt the user for the local system password multiple times
 
 ## Downloading and Executing Scripts
 

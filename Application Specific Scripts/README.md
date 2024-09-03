@@ -1,56 +1,172 @@
 # Application Specific Scripts
 
-This folder contains scripts tailored to specific applications for performing various tasks, both within the application and externally
+These scripts are designed to assist with various tasks related to applications on the macOS. 
+
+## Available Scripts
+
+### 1. [Trellix Mcafee Scripts](SCRIPTLINK)
+
+- **Description**: A collection of scripts to perform various tasks related to trellix/Mcafee
+
+## Downloading and Executing Scripts
+
+### Downloading the Script
+
+You can download scripts from the web or directly from GitHub using the methods below:
+
+#### From a Web Browser
+
+1. Navigate to the script’s URL.
+2. Save the file to your preferred location, such as the Downloads folder.
+
+#### Using `curl` or `wget`
+
+To download a script from a direct URL, use one of the following commands:
+
+```bash
+# Using curl to download a script
+curl -o ~/Downloads/SCRIPT_NAME.sh "URL_OF_SCRIPT"
+
+# Using wget to download a script
+wget -O ~/Downloads/SCRIPT_NAME.sh "URL_OF_SCRIPT"
+```
+
+Replace `"URL_OF_SCRIPT"` with the actual URL of the script.
+
+#### From GitHub
+
+If the script is hosted on GitHub, you can either download it directly or clone the repository:
+
+1. **Download a Single File:**
+
+   - Go to the file in the GitHub repository.
+   - Click the "Raw" button.
+   - Right-click and select "Save As" to download the file.
+
+2. **Clone the Repository:**
+
+   - Clone the repository using `git`:
+
+     ```bash
+     git clone "URL_OF_REPOSITORY"
+     ```
+
+   - Navigate to the cloned repository:
+
+     ```bash
+     cd REPOSITORY_NAME
+     ```
+
+   - The script will be in the repository's directory.
+
+### Executing the Script
+
+To run a script, use `sudo bash` or `sudo python3`, depending on the script type. Most of these scripts are written in Bash or Python. Note that Python scripts require Xcode to be installed on the device prior to running.
+
+When scripts are run from MDM (Mobile Device Management), they typically execute as root and do not require `sudo`. However, if running the scripts standalone, you will likely need `sudo` unless you are already logged in as root. Some MDMs may require a special header to be added to the script, but the necessary header is already included. The scripts should work with most MDMs and have been tested with Intune and Jamf.
+
+Here are examples of how to execute them:
+
+```bash
+# Running a Bash script
+sudo bash "PATH/TO/SCRIPT/SCRIPT_NAME.sh"
+
+# Running a Python script
+sudo python3 "PATH/TO/SCRIPT/SCRIPT_NAME.py"
+```
+
+*Note:* Replace `PATH/TO/SCRIPT` with the actual location where the script is saved. If you downloaded the script to your Downloads folder, use:
+
+```bash
+# Running a Bash script from the Downloads folder
+sudo bash "~/Downloads/SCRIPT_NAME.sh"
+
+# Running a Python script from the Downloads folder
+sudo python3 "~/Downloads/SCRIPT_NAME.py"
+```
 
 ## Script Variables
 
-Each script includes variables that can be tailored to produce different types of logs or settings the local machine. Adjust these settings as needed. Here are some examples:
+Each script may include variables that can be customized to tailor logging behavior or adjust settings on your local machine. Below, you'll find instructions on how to modify these variables based on their type, such as string or boolean.
+
+### Variables Example
+
+Here are some example variables you might find in a script:
 
 ```bash
-# Path to our dialog binary
-dialogPath='/usr/local/bin/dialog'
-# Path to our dialog command file
-dialogCommandFile=$(mktemp /var/tmp/trellixloopDialog.XXXXX)
-#Note: This can be BASE64, a Local File or a URL
-icon="/Applications/Trellix Endpoint Security for Mac.app/Contents/Resources/McAfee_Locked.png"
-#"Window Title"
-titleloop="Trellix Update In Progress"
-title="Trellix Loop Utility"
-#"Window Message During Loop"
-descriptionloop="May take a few minutes"
-#"Window Message To Select Loop"
-description="Choose the number of loops for executing Trellix updates"
+# Enable or Disables Logging
+Enable_Logging=true # Example of Boolean Varible
+
+# Script Log Location
+scriptLog="/var/tmp/org.COMPANY.GPAutoupdater.log" # Example of String Varible
 ```
 
-To modify these variables, open the script in your preferred IDE (such as Visual Studio Code) and adjust the relevant lines. For example:
+### Modifying Variables
 
-```bash
-### BEFORE
-title="Trellix Loop Utility"
+To customize these variables, follow these steps:
 
-### AFTER
-title="MY COMPANY Trellix Loop Utility"
-```
+1. **Open the Script:**
+   Open the script file in your preferred IDE (such as Visual Studio Code) or a text editor.
 
-## Executing Scripts
+2. **Edit Variable Values:**
+   Modify the variable values according to your needs.
 
-To execute a script, use the command `sudo bash` followed by the script's name. For example:
+   *Note: These variables are usually located at the top of the script.*
 
-```bash
-sudo bash "PATH/TO/SCRIPT/Global_Protect_Installer_Upgrader.sh"
-```
+   - **Example: Changing a URL Variable**
 
-*Note:* The file path will depend on where you downloaded the file. For example, if saved to the Downloads folder in your home directory, the command would be:
+     ```bash
+     ### BEFORE
+     GP_pkg_url=("https://URL.com/global-protect/msi/GlobalProtect.pkg")
 
-```bash
-sudo bash "~/downloads/Global_Protect_Installer_Upgrader.sh"
-```
-## Scripts
+     ### AFTER
+     GP_pkg_url=("https://YOURCOMPANY.com/global-protect/msi/GlobalProtect.pkg")
+     ```
 
+   - **Example: Changing the Log Location**
 
-### <p align="center"> [Trellix Loop GUI](https://github.com/cocopuff2u/Jamf-Scripts/blob/e3f51ef10df8da28c5c6cff739c812c27cac15c8/Other_Scripts/Trellix_Loop_Updates_GUI.sh)  </p> 
-<p align="center"> This is designed to help you push Trellix Loops to speed up enrollment or updates</p>
-<br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/e3f51ef10df8da28c5c6cff739c812c27cac15c8/Other_Scripts/images/Trellix_Loop_Image.png" width=50% height=50%>
-</p>
+     ```bash
+     ### BEFORE
+     scriptLog="/var/tmp/org.COMPANY.GPAutoupdater.log"
+
+     ### AFTER
+     scriptLog="/var/tmp/org.YOURCOMPANY.GPAutoupdater.log"
+     ```
+
+### Modifying Boolean Variables
+
+Boolean variables are used to represent true/false values. They often control the flow of the script or enable/disable features. Here’s how to handle boolean variables:
+
+1. **Identify the Boolean Variable:**
+   Look for variables that are set to `true` or `false`. They might also be represented as `1` (true) or `0` (false).
+
+   ```bash
+   # Example boolean variable
+   enableFeature=true
+   ```
+
+2. **Modify the Boolean Value:**
+   Change the value based on the desired state. For instance, to enable a feature, set it to `true`; to disable it, set it to `false`.
+
+   - **Example: Enabling/Disabling a Feature**
+
+     ```bash
+     ### BEFORE
+     enableFeature=false
+
+     ### AFTER
+     enableFeature=true
+     ```
+
+3. **Update the Script Logic:**
+   Ensure that any conditional logic or checks that use the boolean variable reflect your changes. For example:
+
+   ```bash
+   if [ "$enableFeature" = true ]; then
+       # Code to run if the feature is enabled
+   else
+       # Code to run if the feature is disabled
+   fi
+   ```
+
+By following these instructions, you can customize the script to fit your specific requirements and control various aspects of its behavior.
