@@ -10,20 +10,20 @@ This collection of scripts is designed to streamline and automate various tasks 
 
 ## Available Scripts
 
-### 1. [Trellix Loop Updates GUI](SCRIPTLINK)
+### 1. [Trellix Loop Updates GUI](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/212573f1b6fb12bddf06c3f0e603e6858c5381b5/Application_Specific_Scripts/Trellix_Mcafee_Scripts/Trellix_Loop_Updates_GUI.sh)
 - **Description**: Provides a user-friendly GUI to select the number of loops for executing Trellix update commands. This interface simplifies the update process by allowing users to easily choose the number of iterations required.
 
 **Note**: This GUI is powered by [SwiftDialog](https://github.com/swiftDialog/swiftDialog).
 
-  ![Trellix Loop Image](LINK)
+  ![Trellix Loop Image](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/212573f1b6fb12bddf06c3f0e603e6858c5381b5/Application_Specific_Scripts/Trellix_Mcafee_Scripts/images/Trellix_Loop_Image.png)
 
-### 2. [Trellix Loop Update Hidden](SCRIPTLINK)
+### 2. [Trellix Loop Update Hidden](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b5e90c2f80ac5093ac29d013c8c468a82ddcd1e0/Application_Specific_Scripts/Trellix_Mcafee_Scripts/Trellix_Loop_Updates_Hidden.sh)
 - **Description**: Executes the Trellix update command in the background, hidden from the user’s view, based on a script variable. Ideal for automated processes where user interaction is not required.
 
-### 3. [Trellix Loop Updates CLI](SCRIPTLINK)
+### 3. [Trellix Loop Updates CLI](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/959c4caa99c51312ec9ba9fb59a53bc64a777765/Application_Specific_Scripts/Trellix_Mcafee_Scripts/Trellix_Loop_Updates_User_cli.sh)
 - **Description**: Provides a terminal/CLI interface for users to input the number of loops to perform for Trellix update commands. Suitable for users who prefer command-line operations.
 
-### 4. [Trellix Loop for Modules](SCRIPTLINK)
+### 4. [Trellix Loop for Modules](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/959c4caa99c51312ec9ba9fb59a53bc64a777765/Application_Specific_Scripts/Trellix_Mcafee_Scripts/Trellix_Loop_For_Modules.sh)
 - **Description**: Performs a loop of 50 iterations with a GUI to check for the presence of all Trellix modules. Recommended for use during initial installations or for thorough module verification.
 
 **Note**: This GUI is powered by [SwiftDialog](https://github.com/swiftDialog/swiftDialog).
