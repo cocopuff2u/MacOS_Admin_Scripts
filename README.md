@@ -1,7 +1,3 @@
-Here's a refined version of your document:
-
----
-
 # MacOS Admin Scripts
 
 Welcome to a collection of valuable scripts designed for Mac administrators. These scripts assist in performing a variety of tasks on macOS machines. Created with deployment in mind, they work seamlessly with Mobile Device Management (MDM) solutions like Intune, Jamf, and Kandji. Most scripts are adaptable for both local and remote execution via SSH. Some may require pre-existing software such as SwiftDialog, JamfHelper, Xcode, or AppleScript, and can be customized to fit specific needs.
@@ -95,5 +91,3 @@ We welcome your feedback and encourage you to get involved:
 - **Email**: Contact us at [cocopuff2u@yahoo.com](mailto:cocopuff2u@yahoo.com) for detailed inquiries or support.
 - **Share Feedback**: Your suggestions are crucial for continuous improvement. Please share your thoughts to help us enhance these scripts.
 - **Fork and Fix**: Interested in contributing? Fork the repository, make your modifications, and submit a pull request to improve the codebase.
-
----
