@@ -1,24 +1,14 @@
-# Application Installer Scripts
+# Keychain & Certificate Scripts
 
-These scripts are designed to assist with installing various applications on macOS. Some scripts include variables that allow for pulling files locally from the machine or across the network.
+These scripts are designed to assist with upgrading the MacOS.
 
 ## Available Scripts
 
-### 1. [Brave Browser Install](SCRIPTLINK)
+### 1. [Encourager MacOS](LINK)
 
-- **Description**: Installs the latest Brave Browser on the device
+- **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
 
-### 2. [ForeScout Connector Installer](SCRIPTLINK)
-
-- **Description**: Downloads Forescout connector from a remote source and installs it
-
-### 3. [Global Protect Installer](SCRIPTLINK)
-
-- **Description**: Downloads/Upgrades/Installs Global Protect from a remote source
-
-### 4. [Trellix Install](SCRIPTLINK)
-
-- **Description**: Installs/Upgrades Trellix from a local file
+**Note**: Uses [SwiftDialog](https://github.com/swiftDialog/swiftDialog)
 
 ## Downloading and Executing Scripts
 
