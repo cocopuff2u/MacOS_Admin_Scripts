@@ -1,14 +1,27 @@
-# Keychain & Certificate Scripts
+# User Tool Scripts
 
-These scripts are designed to assist with upgrading the MacOS.
+These scripts provide a range of prompts and tools to perform local tasks on macOS machines. They facilitate user interactions and enable administrators to request necessary actions from users. The scripts can be executed locally, remotely, or through platforms like Self Service.
 
 ## Available Scripts
 
-### 1. [Encourager](LINK)
+### 1. [Recommend User Reboot](LINK)
 
-- **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
+- **Description**: Utilizes `JamfHelper` and `AppleScript` with Jamf Pro Scripts to display engaging end-user messages prompting them to reboot their device based on maximum uptime. 
+- **Features**: Customizable uptime days, logo, title, and message.
 
-**Note**: Uses [Jamf Pro](https://www.jamf.com/)
+**Note**: This script requires [Jamf Pro](https://www.jamf.com/).
+
+![Recommend Reboot](LINKHOLDER)
+
+### 2. [Set Time Zone](LINK)
+
+- **Description**: Leverages `AppleScript`, &/or `JamfHelper` and Jamf Pro Scripts to easily display an engaging end-user message to set the timezone.
+- **Features**: Customizable Title, Logo, & Buttons
+- **Optional**: JamfHelper Prompt
+
+**Note**: This script also uses [Jamf Pro](https://www.jamf.com/).
+
+![Set Time Zone](LINKHOLDER)
 
 ## How to Download and Execute Scripts
 

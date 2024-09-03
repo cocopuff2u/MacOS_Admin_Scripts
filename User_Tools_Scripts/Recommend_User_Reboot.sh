@@ -39,7 +39,6 @@ echo "Current User: $loggedInUser"
 #echo current uptime
 echo "This Mac has an uptime of $uptime_days days"
 
-
 #This pulls current user to scope the path of the brandingimage
 currentUser=$(/bin/echo 'show State:/Users/ConsoleUser' | /usr/sbin/scutil | /usr/bin/awk '/Name / { print $3 }')
 # This will set a variable for the jamfHelper

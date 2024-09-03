@@ -16,7 +16,7 @@ These scripts are designed to simplify and automate various tasks related to key
 
 ## How to Download and Execute Scripts
 
-[LINK TO GUIDE]
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
