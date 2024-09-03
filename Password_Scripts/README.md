@@ -1,22 +1,41 @@
-# Password Expiring Warning Script (with OSAScript)
+# Password Scripts
 
-Leverages `OSAScript` and Jamf Pro Scripts to easily displays a simple window encouraging the end-user change the password for there account before the expired date. If the user decides to change it, it will open the system preference change password window
-<br />
-<br />
-Note: Currently set for the password to change every 60 days and the user to be notified after 20 days are remaining, with jamf checking daily
-<br />
-<br />
-- Customizable Max days
+These scripts are designed to assist with upgrading the MacOS.
 
-## Requirements 
-[Jamf Pro](https://www.jamf.com/) 
-<br />
-<br />
+## Available Scripts
+
+### 1. [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+
+- **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
+
+**Note**: Uses [Jamf Pro](https://www.jamf.com/)
 
 
-### Initial Window
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/e180c6ff51823ef44a81a8d22f471d1d95888035/Password%20Expiring%20Warning/images/firstwindow.png">
+### 1. [Password Teser](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+
+- **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
+
+**Note**: Uses [Jamf Pro](https://www.jamf.com/)
 
 
-### Self Service Window
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/9bb2ea4cc5f0a96f64a3c8e837a33aa357551718/Password%20Expiring%20Warning/images/selfservicewindow.png">
+## How to Download and Execute Scripts
+
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+
+## Preexisting Requirements
+
+Some scripts may require additional programs or files to function correctly:
+
+- [Install Xcode](https://developer.apple.com/documentation/safari-developer-tools/installing-xcode-and-simulators): Essential for compiling and running certain scripts.
+- [Install SwiftDialog](https://github.com/swiftDialog/swiftDialog): Required for scripts that use SwiftDialog for graphical user prompts and interactions.
+- [Install IBM Notifications](https://github.com/IBM/mac-ibm-notifications): Necessary for scripts that include IBM notification features.
+
+## Questions, Concerns, and Requests
+
+We value your feedback and encourage you to engage with us. Here’s how you can get involved:
+
+- **Report Issues**: [Submit an issue on GitHub](https://github.com/cocopuff2u/MacOS_Admin_Scripts/issues) for bug reports or feature requests.
+- **Join the Discussion**: Connect with me, cocopuff2u, on the [Mac Admins Slack Channel](https://join.slack.com/t/macadmins/shared_invite/zt-2o5811yhx-q5MNLrFG1VoHRusXLgZwsw) for collaboration and insights.
+- **Email**: Reach out directly at [cocopuff2u@yahoo.com](mailto:cocopuff2u@yahoo.com) for detailed inquiries or support.
+- **Share Feedback**: Your suggestions are crucial for continuous improvement. Please share your thoughts and feedback to help us enhance these scripts.
+- **Fork and Fix**: Interested in contributing? Fork the repository, make your modifications, and submit a pull request to help improve the codebase.

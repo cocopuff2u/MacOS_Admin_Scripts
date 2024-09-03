@@ -1,27 +1,39 @@
-# Password Tester Scripts
+# Password Expiring Scripts
 
-These scripts are designed to allow users to test their passwords if they've forgotten them without causing a lockout.
-
-Originally created for environments that enforce full SmartCard use without a reminder for users to test or remember their local passwords, these scripts provide an easy prompt for users to test their passwords without affecting the FailedLoginCount limit.
+These scripts are designed to notify users of an expiring password and provide a prompt for them to change it.
 
 ## Available Scripts
 
-### 1. [SwiftDialog Password Tester](LINK)
+### 1. [Password Expiring Warning](LINK)
 
-- **Description**: Utilizes `SwiftDialog` and Jamf Pro Scripts to display engaging messages that allow the current logged-in user to test their password.
-- **Features**: Customizable title, logo, and maximum password age.
+- **Description**: When run daily, this script alerts the user about an impending password expiration via OSAScript.
+- **Features**: Customizable maximum days before the password expires.
+
+**Note**: Recommended for use with [Jamf Pro](https://www.jamf.com/) but not required.
+
+  ![firstwindow](LINK)
+
+### 2. [Password Expiring Top Right Notification](LINK)
+
+- **Description**: Displays a warning notification in the top right corner via `SwiftDialog` to inform the user of the remaining days before the password expires.
+- **Features**: Customizable maximum days and notification days.
 
 **Note**: This script uses [SwiftDialog](https://github.com/swiftDialog/swiftDialog) for secure user prompts and interactions.
 
   ![firstwindow](LINK)
 
-### 2. [OSAScript Password Tester](LINK)
+### 3. [Password Self Service Check](LINK)
 
-- **Description**: Uses `OSAScript` and Jamf Pro Scripts to provide a simple prompt for users to test their password without causing a lockout.
+- **Description**: Allows the user to check the remaining days before their password expires.
+- **Features**: Customizable maximum days.
+
+**Note**: Recommended for use with [Jamf Pro](https://www.jamf.com/) but not required.
+
+  ![firstwindow](LINK)
 
 ## How to Download and Execute Scripts
 
-To start using these scripts, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will help you efficiently download, configure, and execute the scripts to suit your needs.
+To start using the scripts, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will help you efficiently download, configure, and execute the scripts to meet your needs.
 
 ## Preexisting Requirements
 
