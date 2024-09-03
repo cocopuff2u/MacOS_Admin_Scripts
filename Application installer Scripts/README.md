@@ -1,40 +1,184 @@
 # Application Installer Scripts
 
-This folder contains scripts for installing applications from both local and remote sources, along with any necessary configuration settings they may require.
+These scripts are designed to assist with installing various applications on macOS. Some scripts include variables that allow for pulling files locally from the machine or across the network.
+
+## Available Scripts
+
+### 1. [Brave Browser Install](SCRIPTLINK)
+
+- **Description**: Installs the latest Brave Browser on the device
+
+### 2. [ForeScout Connector Installer](SCRIPTLINK)
+
+- **Description**: Downloads Forescout connector from a remote source and installs it
+
+### 3. [Global Protect Installer](SCRIPTLINK)
+
+- **Description**: Downloads/Upgrades/Installs Global Protect from a remote source
+
+### 4. [Trellix Install](SCRIPTLINK)
+
+- **Description**: Installs/Upgrades Trellix from a local file
+
+## Downloading and Executing Scripts
+
+### Downloading the Script
+
+You can download scripts from the web or directly from GitHub using the methods below:
+
+#### From a Web Browser
+
+1. Navigate to the script’s URL.
+2. Save the file to your preferred location, such as the Downloads folder.
+
+#### Using `curl` or `wget`
+
+To download a script from a direct URL, use one of the following commands:
+
+```bash
+# Using curl to download a script
+curl -o ~/Downloads/SCRIPT_NAME.sh "URL_OF_SCRIPT"
+
+# Using wget to download a script
+wget -O ~/Downloads/SCRIPT_NAME.sh "URL_OF_SCRIPT"
+```
+
+Replace `"URL_OF_SCRIPT"` with the actual URL of the script.
+
+#### From GitHub
+
+If the script is hosted on GitHub, you can either download it directly or clone the repository:
+
+1. **Download a Single File:**
+
+   - Go to the file in the GitHub repository.
+   - Click the "Raw" button.
+   - Right-click and select "Save As" to download the file.
+
+2. **Clone the Repository:**
+
+   - Clone the repository using `git`:
+
+     ```bash
+     git clone "URL_OF_REPOSITORY"
+     ```
+
+   - Navigate to the cloned repository:
+
+     ```bash
+     cd REPOSITORY_NAME
+     ```
+
+   - The script will be in the repository's directory.
+
+### Executing the Script
+
+To run a script, use `sudo bash` or `sudo python3`, depending on the script type. Most of these scripts are written in Bash or Python. Note that Python scripts require Xcode to be installed on the device prior to running.
+
+When scripts are run from MDM (Mobile Device Management), they typically execute as root and do not require `sudo`. However, if running the scripts standalone, you will likely need `sudo` unless you are already logged in as root. Some MDMs may require a special header to be added to the script, but the necessary header is already included. The scripts should work with most MDMs and have been tested with Intune and Jamf.
+
+Here are examples of how to execute them:
+
+```bash
+# Running a Bash script
+sudo bash "PATH/TO/SCRIPT/SCRIPT_NAME.sh"
+
+# Running a Python script
+sudo python3 "PATH/TO/SCRIPT/SCRIPT_NAME.py"
+```
+
+*Note:* Replace `PATH/TO/SCRIPT` with the actual location where the script is saved. If you downloaded the script to your Downloads folder, use:
+
+```bash
+# Running a Bash script from the Downloads folder
+sudo bash "~/Downloads/SCRIPT_NAME.sh"
+
+# Running a Python script from the Downloads folder
+sudo python3 "~/Downloads/SCRIPT_NAME.py"
+```
 
 ## Script Variables
 
-Each script includes variables that can be tailored to produce different types of logs or settings the local machine. Adjust these settings as needed. Here are some examples:
+Each script may include variables that can be customized to tailor logging behavior or adjust settings on your local machine. Below, you'll find instructions on how to modify these variables based on their type, such as string or boolean.
+
+### Variables Example
+
+Here are some example variables you might find in a script:
 
 ```bash
-# Global Protect URL to verify current version
-GP_pkg_url=("https://URL.com/global-protect/msi/GlobalProtect.pkg")
-GP_pkg_url_live=("https://URL.com")
+# Enable or Disables Logging
+Enable_Logging=true # Example of Boolean Varible
 
 # Script Log Location
-scriptLog="${4:-"/var/tmp/org.COMPANYT.GPAutoupdater.log"}"
+scriptLog="/var/tmp/org.COMPANY.GPAutoupdater.log" # Example of String Varible
 ```
 
-To modify these variables, open the script in your preferred IDE (such as Visual Studio Code) and adjust the relevant lines. For example:
+### Modifying Variables
 
-```bash
-### BEFORE
-GP_pkg_url=("https://URL.com/global-protect/msi/GlobalProtect.pkg")
+To customize these variables, follow these steps:
 
-### AFTER
-GP_pkg_url=("https://YOURCOMPANY.com/global-protect/msi/GlobalProtect.pkg")
-```
+1. **Open the Script:**
+   Open the script file in your preferred IDE (such as Visual Studio Code) or a text editor.
 
-## Executing Scripts
+2. **Edit Variable Values:**
+   Modify the variable values according to your needs.
 
-To execute a script, use the command `sudo bash` followed by the script's name. For example:
+   *Note: These variables are usually located at the top of the script.*
 
-```bash
-sudo bash "PATH/TO/SCRIPT/Global_Protect_Installer_Upgrader.sh"
-```
+   - **Example: Changing a URL Variable**
 
-*Note:* The file path will depend on where you downloaded the file. For example, if saved to the Downloads folder in your home directory, the command would be:
+     ```bash
+     ### BEFORE
+     GP_pkg_url=("https://URL.com/global-protect/msi/GlobalProtect.pkg")
 
-```bash
-sudo bash "~/downloads/Global_Protect_Installer_Upgrader.sh"
-```
+     ### AFTER
+     GP_pkg_url=("https://YOURCOMPANY.com/global-protect/msi/GlobalProtect.pkg")
+     ```
+
+   - **Example: Changing the Log Location**
+
+     ```bash
+     ### BEFORE
+     scriptLog="/var/tmp/org.COMPANY.GPAutoupdater.log"
+
+     ### AFTER
+     scriptLog="/var/tmp/org.YOURCOMPANY.GPAutoupdater.log"
+     ```
+
+### Modifying Boolean Variables
+
+Boolean variables are used to represent true/false values. They often control the flow of the script or enable/disable features. Here’s how to handle boolean variables:
+
+1. **Identify the Boolean Variable:**
+   Look for variables that are set to `true` or `false`. They might also be represented as `1` (true) or `0` (false).
+
+   ```bash
+   # Example boolean variable
+   enableFeature=true
+   ```
+
+2. **Modify the Boolean Value:**
+   Change the value based on the desired state. For instance, to enable a feature, set it to `true`; to disable it, set it to `false`.
+
+   - **Example: Enabling/Disabling a Feature**
+
+     ```bash
+     ### BEFORE
+     enableFeature=false
+
+     ### AFTER
+     enableFeature=true
+     ```
+
+3. **Update the Script Logic:**
+   Ensure that any conditional logic or checks that use the boolean variable reflect your changes. For example:
+
+   ```bash
+   if [ "$enableFeature" = true ]; then
+       # Code to run if the feature is enabled
+   else
+       # Code to run if the feature is disabled
+   fi
+   ```
+
+By following these instructions, you can customize the script to fit your specific requirements and control various aspects of its behavior.
