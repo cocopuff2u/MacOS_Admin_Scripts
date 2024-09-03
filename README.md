@@ -4,6 +4,8 @@ Welcome to a collection of valuable scripts designed for Mac administrators. The
 
 Sharing tools and scripts is essential in the Mac admin community. Many of these scripts are adaptations or combinations of existing ones, and others are original creations. Feel free to modify, request, or contribute your own scripts. After all, it’s all about collaboration and community support.
 
+<div align="center">
+  
 ## Available Scripts
 
 ### 1. [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_installer_Scripts)
@@ -38,37 +40,30 @@ Scripts that provide tools and prompts for user and admin tasks.
 ### [Password Expiring Warning](https://github.com/cocopuff2u/Jamf-Scripts/tree/e9726a40ae3d0c85901b81bdebf9cfaee3eff9c3/Password%20Expiring%20Warning)
 Warns users when their password is nearing expiration.
 <br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/e180c6ff51823ef44a81a8d22f471d1d95888035/Password%20Expiring%20Warning/images/firstwindow.png" width=50% height=50%>
-</p>
+<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/e180c6ff51823ef44a81a8d22f471d1d95888035/Password%20Expiring%20Warning/images/firstwindow.png" width="50%">
 
 ### [Encourager MacOS Upgrade Script](https://github.com/cocopuff2u/Jamf-Scripts/tree/aed85f88d759b35859bd2603e6ee099794a01680/Encourager%20(MacOS%20Upgrader%20Script))
 Prompts users to upgrade macOS via the Install Assistant pkg, encouraging them to perform the upgrade.
 <br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/firstwindow.png" width=50% height=50%>
-</p>
+<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/firstwindow.png" width="50%">
 
 ### [User Password Tester](https://github.com/cocopuff2u/Jamf-Scripts/tree/main/User%20Password%20Tester)
 Allows the local logged-in user to test their password, useful in SmartCard-enforced environments.
 <br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/660c747b97d5187b8c9d75ef4213cee70bfdc834/User%20Password%20Tester/images/firstwindow.png" width=50% height=50%>
-</p>
+<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/660c747b97d5187b8c9d75ef4213cee70bfdc834/User%20Password%20Tester/images/firstwindow.png" width="50%">
 
 ### [User Recommend Reboot](https://github.com/cocopuff2u/Jamf-Scripts/tree/a85717d38bf522ecbe26fafaff94df51fdd85ca4/User%20Recommend%20Reboot)
 Recommends users to reboot their devices based on a maximum uptime setting.
 <br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/93797f84db5149487ae2f7cab3abca728192b2bf/User%20Recommend%20Reboot/recommendrebootwindow.png" width=50% height=50%>
-</p>
+<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/93797f84db5149487ae2f7cab3abca728192b2bf/User%20Recommend%20Reboot/recommendrebootwindow.png" width="50%">
 
 ### [Set Time Zone](https://github.com/cocopuff2u/Jamf-Scripts/tree/5884e9ec57f1f9c58b958df2725e36cc90dbd0f8/Set%20Time%20Zone)
 Allows users to select their time zone.
 <br />
-<p align="center">
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/84457f9da900fc5f54a5968825ab2b1fd96dfdf9/Set%20Time%20Zone/firstwindow.png" width=50% height=50%>
-</p>
+<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/84457f9da900fc5f54a5968825ab2b1fd96dfdf9/Set%20Time%20Zone/firstwindow.png" width="50%">
+
+</div>
+
 
 ## How to Download and Execute Scripts
 
