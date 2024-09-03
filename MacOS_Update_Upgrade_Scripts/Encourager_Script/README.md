@@ -15,13 +15,13 @@ The Encourager script uses `JamfHelper` and Jamf Pro to present a compelling mes
 ### Screenshots
 
 **Initial Window**  
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/firstwindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/firstwindow.png">
 
 **Decline Window**  
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/declinewindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/declinewindow.png">
 
 **After Download Window**  
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/afterdownloadwindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/afterdownloadwindow.png">
 
 ## How to Download and Execute Scripts
 
