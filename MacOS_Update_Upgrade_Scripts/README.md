@@ -4,7 +4,7 @@ These scripts are designed to assist with upgrading the MacOS.
 
 ## Available Scripts
 
-### 1. [Encourager](LINK)
+### 1. [Encourager](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
 
 - **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
 
