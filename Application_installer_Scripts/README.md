@@ -10,16 +10,16 @@ This folder contains a set of scripts designed to streamline the installation of
 
 ## Available Scripts
 
-### 1. [Brave Browser Install](SCRIPTLINK)
+### 1. [Brave Browser Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Brave_Browser_Installer.sh)
 - **Description**: Installs the latest Brave Browser on your device, ensuring you have the most up-to-date version with the latest features and security updates.
 
-### 2. [ForeScout Connector Installer](SCRIPTLINK)
+### 2. [ForeScout Connector Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/ForeScout_Connector_Installer.sh)
 - **Description**: Downloads and installs the Forescout connector from a remote source, facilitating seamless integration with network security systems.
 
-### 3. [Global Protect Installer](SCRIPTLINK)
+### 3. [Global Protect Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Global_Protect_Installer_Upgrader.sh)
 - **Description**: Handles the download, upgrade, and installation of Global Protect, ensuring secure and reliable remote access to corporate networks.
 
-### 4. [Trellix Install](SCRIPTLINK)
+### 4. [Trellix Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Trellix_Post_Install.sh)
 - **Description**: Installs or upgrades Trellix from a local file, providing a streamlined process for maintaining this crucial software.
 
 ## How to Download and Execute Scripts
