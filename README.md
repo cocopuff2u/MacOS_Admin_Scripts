@@ -6,31 +6,31 @@ Sharing tools and scripts is essential in the Mac admin community. Many of these
 
 ## Available Scripts
 
-### 1. [Application Installers Scripts](LINK)
+### 1. [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_installer_Scripts)
 A comprehensive collection of scripts for installing various applications.
 
-### 2. [Application Specific Scripts](LINK)
+### 2. [Application Specific Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_Specific_Scripts)
 Scripts tailored for customizing or configuring specific applications.
 
-### 3. [Application Uninstall Scripts](LINK)
+### 3. [Application Uninstall Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_Uninstaller_Scripts)
 A set of scripts designed for uninstalling different applications.
 
-### 4. [Delete/Disable Scripts](LINK)
+### 4. [Delete/Disable Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Delete_Disable_Scripts)
 Scripts for disabling or uninstalling software and services.
 
-### 5. [Jamf Only Scripts](LINK)
+### 5. [Jamf Only Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Jamf_Only_Scripts)
 Scripts specifically crafted for deployment via Jamf Pro.
 
-### 6. [Keychain, SSH, and Certificate Scripts](LINK)
+### 6. [Keychain, SSH, and Certificate Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Keychain_SSH_Certificates_Scripts)
 Scripts focused on managing keychain, SSH, and certificates.
 
-### 7. [MacOS Update/Upgrade Scripts](LINK)
+### 7. [MacOS Update/Upgrade Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/MacOS_Update_Upgrade_Scripts)
 Scripts to assist with updating or upgrading macOS.
 
-### 8. [Password Management Scripts](LINK)
+### 8. [Password Management Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Password_Scripts)
 Scripts designed to help admins manage and communicate password requirements.
 
-### 9. [User Tool Scripts](LINK)
+### 9. [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/User_Tools_Scripts)
 Scripts that provide tools and prompts for user and admin tasks.
 
 ## Featured Scripts
