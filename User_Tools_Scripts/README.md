@@ -4,16 +4,16 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 ## Available Scripts
 
-### 1. [Recommend User Reboot](LINK)
+### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/Recommend_User_Reboot.sh)
 
 - **Description**: Utilizes `JamfHelper` and `AppleScript` with Jamf Pro Scripts to display engaging end-user messages prompting them to reboot their device based on maximum uptime. 
 - **Features**: Customizable uptime days, logo, title, and message.
 
 **Note**: This script requires [Jamf Pro](https://www.jamf.com/).
 
-![Recommend Reboot](LINKHOLDER)
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
 
-### 2. [Set Time Zone](LINK)
+### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/Set_Time_Zone.sh)
 
 - **Description**: Leverages `AppleScript`, &/or `JamfHelper` and Jamf Pro Scripts to easily display an engaging end-user message to set the timezone.
 - **Features**: Customizable Title, Logo, & Buttons
@@ -21,7 +21,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 **Note**: This script also uses [Jamf Pro](https://www.jamf.com/).
 
-![Set Time Zone](LINKHOLDER)
+![Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/images/firstwindow.png)
 
 ## How to Download and Execute Scripts
 
