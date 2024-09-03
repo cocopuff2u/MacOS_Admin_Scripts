@@ -11,7 +11,7 @@ These scripts are specifically designed to run within the Jamf MDM environment. 
   - **Escrow Bootstraptoken**: Safeguards the token with the user’s password.
   - **Verify Bootstraptoken**: Confirms that the escrowed token is functioning correctly.
 
-  **Note**: Uses SwiftDialog to prompt users for password
+  **Note**: Uses [SwiftDialog](https://github.com/swiftDialog/swiftDialog) to prompt users for password
 
   ![Escrow Example](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2e7ed2338fcc7850272a8908b1f91b5c865d3527/Jamf%20Only%20Scripts/images/Example_BootStrapToken_Escrow.png)
 
