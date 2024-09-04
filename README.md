@@ -1,6 +1,6 @@
 <div align="center">
   
-# MacOS Admin Scripts
+# <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/images/computer.png" width="3%"> MacOS Admin Scripts <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/images/computer.png" width="3%">
 
 </div>
 
