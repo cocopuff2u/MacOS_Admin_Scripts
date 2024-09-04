@@ -6,22 +6,40 @@ Originally created for environments that enforce full SmartCard use without a re
 
 ## Available Scripts
 
-### 1. [SwiftDialog Password Tester](LINK)
+### 1. [SwiftDialog Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/OSAScript_Password_Tester.sh)
 
 - **Description**: Utilizes `SwiftDialog` and Jamf Pro Scripts to display engaging messages that allow the current logged-in user to test their password.
 - **Features**: Customizable title, logo, and maximum password age.
 
 **Note**: This script uses [SwiftDialog](https://github.com/swiftDialog/swiftDialog) for secure user prompts and interactions.
 
-  ![firstwindow](LINK)
+### First Window
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/firstwindow.png" alt="First Window" width="50%">
 
-### 2. [OSAScript Password Tester](LINK)
+---
+
+### Failed Window
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/failedwindow.png" alt="Failed Window" width="50%">
+
+---
+
+### Max Window
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/maxwindow.png" alt="Max Window" width="50%">
+
+---
+
+### Successful Window
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/successwindow.png" alt="Successful Window" width="50%">
+
+---
+
+### 2. [OSAScript Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/OSAScript_Password_Tester.sh)
 
 - **Description**: Uses `OSAScript` and Jamf Pro Scripts to provide a simple prompt for users to test their password without causing a lockout.
 
 ## How to Download and Execute Scripts
 
-To start using these scripts, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will help you efficiently download, configure, and execute the scripts to suit your needs.
+To start using these scripts, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will help you efficiently download, configure, and execute the scripts to suit your needs.
 
 ## Preexisting Requirements
 
