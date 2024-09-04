@@ -15,17 +15,17 @@ The Encourager script uses `JamfHelper` and Jamf Pro to present a compelling mes
 ### Screenshots
 
 **Initial Window**  
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/firstwindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/firstwindow.png">
 
 **Decline Window**  
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/declinewindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/declinewindow.png">
 
 **After Download Window**  
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/455adc33bd632014626dac66bfec10af62beb0e7/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/afterdownloadwindow.png">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/afterdownloadwindow.png">
 
 ## How to Download and Execute Scripts
 
-Follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md) to download, configure, and run the scripts effectively.
+Follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md) to download, configure, and run the scripts effectively.
 
 ## Preexisting Requirements
 
