@@ -11,7 +11,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
 **Note**: Recommended for use with [Jamf Pro](https://www.jamf.com/) but not required.
 
-  ![firstwindow](LINK)
+  ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/93e3f21297a7113267f6e63a68c864e73e365590/Password_Scripts/images/firstwindow.png)
 
 ### 2. [Password Expiring Top Right Notification](LINK)
 
@@ -20,7 +20,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
 **Note**: This script uses [SwiftDialog](https://github.com/swiftDialog/swiftDialog) for secure user prompts and interactions.
 
-  ![firstwindow](LINK)
+  ![notifcation](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2afad689e8e2d6f2da958a706940e46dc056070e/Password_Scripts/images/Example_notification_password.png)
 
 ### 3. [Password Self Service Check](LINK)
 
@@ -29,7 +29,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
 **Note**: Recommended for use with [Jamf Pro](https://www.jamf.com/) but not required.
 
-  ![firstwindow](LINK)
+  ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/e5beb21223dd33f08e4fca24016adf16898735d4/Password_Scripts/images/selfservicewindow.png)
 
 ## How to Download and Execute Scripts
 
