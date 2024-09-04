@@ -4,7 +4,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
 ## Available Scripts
 
-### 1. [Password Expiring Warning](LINK)
+### 1. [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/61776b0a47ea5af4ce3910fca1aa00d90406c0ce/Password_Scripts/Password_Expiring_Warning/Password_Expiring_Warning_OSAScript.sh)
 
 - **Description**: When run daily, this script alerts the user about an impending password expiration via OSAScript.
 - **Features**: Customizable maximum days before the password expires.
@@ -13,7 +13,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
   ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/93e3f21297a7113267f6e63a68c864e73e365590/Password_Scripts/images/firstwindow.png)
 
-### 2. [Password Expiring Top Right Notification](LINK)
+### 2. [Password Expiring Top Right Notification](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/61776b0a47ea5af4ce3910fca1aa00d90406c0ce/Password_Scripts/Password_Expiring_Warning/Daily_Password_Warning_Notification_Swift.sh)
 
 - **Description**: Displays a warning notification in the top right corner via `SwiftDialog` to inform the user of the remaining days before the password expires.
 - **Features**: Customizable maximum days and notification days.
@@ -22,7 +22,7 @@ These scripts are designed to notify users of an expiring password and provide a
 
   ![notifcation](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2afad689e8e2d6f2da958a706940e46dc056070e/Password_Scripts/images/Example_notification_password.png)
 
-### 3. [Password Self Service Check](LINK)
+### 3. [Password Self Service Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/61776b0a47ea5af4ce3910fca1aa00d90406c0ce/Password_Scripts/Password_Expiring_Warning/Password_Expiring_Jamf_Self_Service.sh)
 
 - **Description**: Allows the user to check the remaining days before their password expires.
 - **Features**: Customizable maximum days.
