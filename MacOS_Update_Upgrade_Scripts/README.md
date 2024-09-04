@@ -4,7 +4,7 @@ These scripts are designed to assist with upgrading the MacOS.
 
 ## Available Scripts
 
-### 1. [Encourager](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+### 1. [Encourager](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script)
 
 - **Description**: "Encourages" The user to install the upgrade provided to them on this prompt
 
@@ -12,7 +12,7 @@ These scripts are designed to assist with upgrading the MacOS.
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
