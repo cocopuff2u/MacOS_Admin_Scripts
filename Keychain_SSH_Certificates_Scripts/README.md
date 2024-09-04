@@ -14,6 +14,9 @@ These scripts are designed to simplify and automate various tasks related to key
 
 **Note**: The script will prompt the user for the local system password multiple times to authorize the import process.
 
+### 1. [Reset Keychain](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts/Reset_User_Keychain.sh)
+- **Description**: Resets local users keychain with prompts
+
 ## How to Download and Execute Scripts
 
 To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
