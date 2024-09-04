@@ -8,66 +8,66 @@ Sharing tools and scripts is essential in the Mac admin community. Many of these
   
 ## Available Scripts
 
-### 1. [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_installer_Scripts)
+### [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts)
 A comprehensive collection of scripts for installing various applications.
 
-### 2. [Application Specific Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_Specific_Scripts)
+### [Application Specific Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Specific_Scripts)
 Scripts tailored for customizing or configuring specific applications.
 
-### 3. [Application Uninstall Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Application_Uninstaller_Scripts)
+### [Application Uninstall Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Uninstaller_Scripts)
 A set of scripts designed for uninstalling different applications.
 
-### 4. [Delete/Disable Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Delete_Disable_Scripts)
+### [Delete/Disable Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Disable_Scripts)
 Scripts for disabling or uninstalling software and services.
 
-### 5. [Jamf Only Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Jamf_Only_Scripts)
+### [Jamf Only Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts)
 Scripts specifically crafted for deployment via Jamf Pro.
 
-### 6. [Keychain, SSH, and Certificate Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Keychain_SSH_Certificates_Scripts)
+### [Keychain, SSH, and Certificate Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts)
 Scripts focused on managing keychain, SSH, and certificates.
 
-### 7. [MacOS Update/Upgrade Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/MacOS_Update_Upgrade_Scripts)
+### [MacOS Update/Upgrade Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts)
 Scripts to assist with updating or upgrading macOS.
 
-### 8. [Password Management Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/Password_Scripts)
+### [Password Management Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts)
 Scripts designed to help admins manage and communicate password requirements.
 
-### 9. [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/7e9c4c4bace4505e891f0fe3b11d00eade53ab5b/User_Tools_Scripts)
+### [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
 Scripts that provide tools and prompts for user and admin tasks.
 
 ## Featured Scripts
 
-### [Password Expiring Warning](https://github.com/cocopuff2u/Jamf-Scripts/tree/e9726a40ae3d0c85901b81bdebf9cfaee3eff9c3/Password%20Expiring%20Warning)
+### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
 <br />
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/e180c6ff51823ef44a81a8d22f471d1d95888035/Password%20Expiring%20Warning/images/firstwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/images/firstwindow.png" width="50%">
 
-### [Encourager MacOS Upgrade Script](https://github.com/cocopuff2u/Jamf-Scripts/tree/aed85f88d759b35859bd2603e6ee099794a01680/Encourager%20(MacOS%20Upgrader%20Script))
+### [Encourager MacOS Upgrade Script](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script)
 Prompts users to upgrade macOS via the Install Assistant pkg, encouraging them to perform the upgrade.
 <br />
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/440682a92426b6de0611e3156271bcb685b70525/Encourager%20(MacOS%20Upgrader%20Script)/images/firstwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script/images/firstwindow.png" width="50%">
 
-### [User Password Tester](https://github.com/cocopuff2u/Jamf-Scripts/tree/main/User%20Password%20Tester)
+### [User Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script)
 Allows the local logged-in user to test their password, useful in SmartCard-enforced environments.
 <br />
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/660c747b97d5187b8c9d75ef4213cee70bfdc834/User%20Password%20Tester/images/firstwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/firstwindow.png" width="50%">
 
-### [User Recommend Reboot](https://github.com/cocopuff2u/Jamf-Scripts/tree/a85717d38bf522ecbe26fafaff94df51fdd85ca4/User%20Recommend%20Reboot)
+### [User Recommend Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
 Recommends users to reboot their devices based on a maximum uptime setting.
 <br />
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/93797f84db5149487ae2f7cab3abca728192b2bf/User%20Recommend%20Reboot/recommendrebootwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
 
-### [Set Time Zone](https://github.com/cocopuff2u/Jamf-Scripts/tree/5884e9ec57f1f9c58b958df2725e36cc90dbd0f8/Set%20Time%20Zone)
+### [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
 Allows users to select their time zone.
 <br />
-<img src="https://github.com/cocopuff2u/Jamf-Scripts/blob/84457f9da900fc5f54a5968825ab2b1fd96dfdf9/Set%20Time%20Zone/firstwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/firstwindow.png" width="50%">
 
 </div>
 
 
 ## How to Download and Execute Scripts
 
-To get started, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide covers the steps to download, configure, and execute the scripts effectively.
+To get started, follow the detailed instructions in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide covers the steps to download, configure, and execute the scripts effectively.
 
 ## Preexisting Requirements
 
