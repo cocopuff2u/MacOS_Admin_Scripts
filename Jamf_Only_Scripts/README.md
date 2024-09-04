@@ -1,4 +1,4 @@
-# Jamf-Only Scripts
+# Jamf Only Scripts
 
 These scripts are specifically developed to operate within the Jamf MDM (Mobile Device Management) environment. While they are optimized for use with Jamf, they are designed with flexibility in mind, allowing for potential adaptation to other MDM solutions with some adjustments.
 
@@ -9,7 +9,7 @@ These scripts are specifically developed to operate within the Jamf MDM (Mobile 
 
 ## Available Scripts
 
-### 1. [Jamf Bootstraptoken Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/5add3d0e6f4e9037934f6d313e1e83468104536b/Jamf%20Only%20Scripts/Jamf%20Escrow%20Scripts)
+### 1. [Jamf Bootstraptoken Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts/Jamf_Escrow_Scripts)
 - **Description**: This set of scripts is designed to manage Bootstraptokens within the Jamf environment. It includes three main functionalities:
   - **Enable Bootstraptoken**: Activates the Bootstraptoken for the device, enabling secure management.
   - **Escrow Bootstraptoken**: Safeguards the Bootstraptoken by storing it securely with the user’s password.
@@ -17,14 +17,14 @@ These scripts are specifically developed to operate within the Jamf MDM (Mobile 
 
   **Note**: These scripts utilize [SwiftDialog](https://github.com/swiftDialog/swiftDialog) for secure user prompts and interactions.
 
-  ![Escrow Example](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2e7ed2338fcc7850272a8908b1f91b5c865d3527/Jamf%20Only%20Scripts/images/Example_BootStrapToken_Escrow.png)
+  ![Escrow Example](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts/images/Example_BootStrapToken_Escrow.png)
 
-### 2. [Jamf Extension Attributes Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/5add3d0e6f4e9037934f6d313e1e83468104536b/Jamf%20Only%20Scripts/Jamf%20Extension%20Attributes)
+### 2. [Jamf Extension Attributes Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts/Jamf_Extension_Attributes)
 - **Description**: This collection of scripts is designed to extract and upload extension attribute information from macOS devices to Jamf. They assist in gathering detailed device attributes, enhancing the management and reporting capabilities within Jamf.
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
