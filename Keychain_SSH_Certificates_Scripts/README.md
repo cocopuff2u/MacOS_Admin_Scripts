@@ -9,14 +9,14 @@ These scripts are designed to simplify and automate various tasks related to key
 
 ## Available Scripts
 
-### 1. [Import DoD Certs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/9e8bc663521946a9d50858c9c900928928fde037/Keychain_SSH_Certificates_Scripts/Import_DoD_Certs.sh)
+### 1. [Import DoD Certs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts/Import_DoD_Certs.sh)
 - **Description**: Imports Department of Defense (DoD) certificates into the system keychain. This script is essential for ensuring that the necessary certificates are correctly installed for secure communications and compliance with DoD requirements.
 
 **Note**: The script will prompt the user for the local system password multiple times to authorize the import process.
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
