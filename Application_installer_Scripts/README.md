@@ -10,21 +10,21 @@ This folder contains a set of scripts designed to streamline the installation of
 
 ## Available Scripts
 
-### 1. [Brave Browser Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Brave_Browser_Installer.sh)
+### 1. [Brave Browser Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts/Brave_Browser_Installer.sh)
 - **Description**: Installs the latest Brave Browser on your device, ensuring you have the most up-to-date version with the latest features and security updates.
 
-### 2. [ForeScout Connector Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/ForeScout_Connector_Installer.sh)
+### 2. [ForeScout Connector Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts/ForeScout_Connector_Installer.sh)
 - **Description**: Downloads and installs the Forescout connector from a remote source, facilitating seamless integration with network security systems.
 
-### 3. [Global Protect Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Global_Protect_Installer_Upgrader.sh)
+### 3. [Global Protect Installer](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts/Global_Protect_Installer_Upgrader.sh)
 - **Description**: Handles the download, upgrade, and installation of Global Protect, ensuring secure and reliable remote access to corporate networks.
 
-### 4. [Trellix Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/b23f69cbd3d97cfdfee3b6d4a6df6b52d5d0b1d2/Application_installer_Scripts/Trellix_Post_Install.sh)
+### 4. [Trellix Install](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts/Trellix_Post_Install.sh)
 - **Description**: Installs or upgrades Trellix from a local file, providing a streamlined process for maintaining this crucial software.
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
