@@ -10,12 +10,12 @@ These scripts are tailored to streamline and automate various tasks related to s
 
 ## Available Scripts
 
-### 1. [Trellix McAfee Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/Application_Specific_Scripts/Trellix_Mcafee_Scripts)
+### 1. [Trellix McAfee Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Specific_Scripts/Trellix_Mcafee_Scripts)
 - **Description**: A comprehensive collection of scripts designed for managing Trellix and McAfee applications. These scripts facilitate various tasks such as installation, configuration, and updates, providing a streamlined approach to handling these security applications. This set is ideal for IT administrators looking to automate and simplify their Trellix and McAfee management processes.
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
