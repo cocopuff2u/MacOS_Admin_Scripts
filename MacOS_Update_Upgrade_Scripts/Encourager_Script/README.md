@@ -2,6 +2,8 @@
 
 The Encourager script uses `JamfHelper` and Jamf Pro to present a compelling message to users, prompting them to upgrade their macOS. It provides the Apple Install Assistant package for immediate installation or deferred installation with a re-prompt.
 
+[Link to Latest Script](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script/Encourager_MacOS_Upgrader_Script.sh)
+
 ### Key Features
 
 - **Upgrade Management**: Compares the current OS to the target OS specified in the script, downloads the installer from a provided URL, and opens it for the user to install immediately or later.
