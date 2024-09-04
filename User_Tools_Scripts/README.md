@@ -4,16 +4,16 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 ## Available Scripts
 
-### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/Recommend_User_Reboot.sh)
+### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Recommend_User_Reboot.sh)
 
 - **Description**: Utilizes `JamfHelper` and `AppleScript` with Jamf Pro Scripts to display engaging end-user messages prompting them to reboot their device based on maximum uptime. 
 - **Features**: Customizable uptime days, logo, title, and message.
 
 **Note**: This script requires [Jamf Pro](https://www.jamf.com/).
 
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
 
-### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/Set_Time_Zone.sh)
+### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Set_Time_Zone.sh)
 
 - **Description**: Leverages `AppleScript`, &/or `JamfHelper` and Jamf Pro Scripts to easily display an engaging end-user message to set the timezone.
 - **Features**: Customizable Title, Logo, & Buttons
@@ -21,11 +21,11 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 **Note**: This script also uses [Jamf Pro](https://www.jamf.com/).
 
-![Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/ff4d2be99bb677874d61a51f19a1f611f391a069/User_Tools_Scripts/images/firstwindow.png)
+![Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/firstwindow.png)
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
