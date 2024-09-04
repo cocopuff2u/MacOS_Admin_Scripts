@@ -8,18 +8,14 @@ These scripts are designed to assist with password management and notification.
 
 - **Description**: Notifies the user when their password is about to expire
 
-**Note**: Uses [Jamf Pro](https://www.jamf.com/)
-
   ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/images/firstwindow.png)
   ![notifcation](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/images/Example_notification_password.png)
 
-### 1. [Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+### 1. [Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script)
 
 - **Description**: Allows a user to test the local password without triggering lockout from failed attempts
 
-**Note**: Uses [Jamf Pro](https://www.jamf.com/)
-
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User%20Password%20Tester%20Script/images/firstwindow.png" alt="Description" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/firstwindow.png" alt="Description" width="50%">
 
 
 ## How to Download and Execute Scripts
