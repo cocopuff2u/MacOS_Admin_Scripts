@@ -4,27 +4,27 @@ These scripts are designed to assist with password management and notification.
 
 ## Available Scripts
 
-### 1. [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+### 1. [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/Password_Scripts/Password_Expiring_Warning)
 
 - **Description**: Notifies the user when their password is about to expire
 
 **Note**: Uses [Jamf Pro](https://www.jamf.com/)
 
-  ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/93e3f21297a7113267f6e63a68c864e73e365590/Password_Scripts/images/firstwindow.png)
-  ![notifcation](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2afad689e8e2d6f2da958a706940e46dc056070e/Password_Scripts/images/Example_notification_password.png)
+  ![firstwindow](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/Password_Scripts/images/firstwindow.png)
+  ![notifcation](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/Password_Scripts/images/Example_notification_password.png)
 
-### 1. [Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/deb7a3b270559e0ad2e22cabf953dc17be8b304d/MacOS_Update_Upgrade_Scripts/Encourager_Script)
+### 1. [Password Tester](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/MacOS_Update_Upgrade_Scripts/Encourager_Script)
 
 - **Description**: Allows a user to test the local password without triggering lockout from failed attempts
 
 **Note**: Uses [Jamf Pro](https://www.jamf.com/)
 
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/2afad689e8e2d6f2da958a706940e46dc056070e/Password_Scripts/User%20Password%20Tester%20Script/images/firstwindow.png" alt="Description" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/Password_Scripts/User%20Password%20Tester%20Script/images/firstwindow.png" alt="Description" width="50%">
 
 
 ## How to Download and Execute Scripts
 
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/7f996a69700d749398ec9a1f84aadd26fd855569/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
+To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/tree/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
 
 ## Preexisting Requirements
 
