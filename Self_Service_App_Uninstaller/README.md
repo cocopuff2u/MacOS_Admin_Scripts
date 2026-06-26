@@ -41,10 +41,6 @@ It is built to be deployed as a **Jamf Self Service** item. The user clicks it, 
 
 > Tip: Edit the **CONFIG** block at the top of the script to change the banner color, dialog text, and the `PROTECTED_*` lists (apps that can never be removed).
 
-## How to Download and Execute Scripts
-
-To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
-
 ## Preexisting Requirements
 
 None. The interface uses only `osascript` (JXA) + AppKit, which ship with macOS. A user must be logged in at the screen for the GUI to appear.
