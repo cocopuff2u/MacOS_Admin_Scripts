@@ -39,7 +39,16 @@ Scripts designed to help admins manage and communicate password requirements.
 ### [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
 Scripts that provide tools and prompts for user and admin tasks.
 
+### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
+A GUI tool that completely uninstalls an app and all its leftover files, with a user-reviewed checklist.
+
 ## Featured Scripts
+
+### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
+Completely uninstalls an app and all the leftover files it leaves behind. The user picks an app, reviews exactly what will be removed, and confirms — nothing is deleted without their OK.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/firstwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/secondwindow.png" width="50%">
 
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
