@@ -47,8 +47,8 @@
 ####################################################################################################
 
 # --- Config (Jamf $4 = uptime days, $5 = countdown minutes, $6 = dry run) --
-UPTIME_DAYS="${4:-21}"             # remind once the Mac has been up this many days
-RESTART_TIMER="${5:-10}"           # countdown minutes before auto-restart after "Restart Now"
+UPTIME_DAYS="${4:-14}"             # remind once the Mac has been up this many days
+RESTART_TIMER="${5:-5}"            # countdown minutes before auto-restart after "Restart Now"
 DRY_RUN="${6:-dry}"              # dry/test mode — accepts "dry", "true", "1", or "yes" (any one of
                                    #   them shows the dialogs but does NOT restart, and bypasses the
                                    #   uptime + meeting checks so the prompt always appears).
