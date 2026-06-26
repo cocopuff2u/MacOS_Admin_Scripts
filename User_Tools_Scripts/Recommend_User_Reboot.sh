@@ -13,20 +13,20 @@
 #       and shown in the console user's session, so it works even when run as root from Jamf.
 #
 # Jamf Script Parameters:
-#   $4 - Uptime days before reminding   (number; blank = 21)
-#   $5 - Countdown minutes before auto-restart after "Restart Now"   (number; blank = 10)
+#   $4 - Uptime days before reminding   (number; blank = 14)
+#   $5 - Countdown minutes before auto-restart after "Restart Now"   (number; blank = 5)
 #   $6 - Dry run   ("dry"/"true" = show the dialogs but DO NOT restart, and ignore the uptime +
 #                   meeting checks so the prompt always appears — for testing)
 #
 # How to set it up in Jamf Pro:
 #   1. Settings > Computer Management > Scripts > New, and paste in this script.
 #   2. On the Options tab, set these Parameter Labels (copy/paste):
-#        Parameter 4:  Uptime days before reminding (blank = 21)
-#        Parameter 5:  Countdown minutes before restart (blank = 10)
+#        Parameter 4:  Uptime days before reminding (blank = 14)
+#        Parameter 5:  Countdown minutes before restart (blank = 5)
 #        Parameter 6:  Dry run? (type: dry  to test without restarting)
 #   3. Add the script to a Policy and fill in the values:
-#        $4  e.g.  21        (remind once the Mac has been up 21+ days)
-#        $5  e.g.  10        (10-minute save-your-work countdown)
+#        $4  e.g.  14        (remind once the Mac has been up 14+ days)
+#        $5  e.g.  5         (5-minute save-your-work countdown)
 #        $6  =====>  PRODUCTION: enter  false  (or leave blank AND change the DRY_RUN default
 #                    in the config below from "dry" to "false"). Enter  dry  only for testing.
 #                    ** This script DEFAULTS to dry, so it will NOT restart until you do this. **
