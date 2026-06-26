@@ -8,7 +8,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 - **Description**: Reminds the user to restart once their Mac has been up beyond a set number of days. Shows a branded reminder; if they agree, a **live countdown** gives them time to save work before the Mac restarts. Fully native — **no swiftDialog or JamfHelper**; the GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
 - **Respects the user**: skips the prompt while a meeting / screen share / presentation / full-screen video is active (a display-sleep assertion is held).
-- **Jamf parameters**: `$4` uptime days (blank = 21), `$5` countdown minutes (blank = 10), `$6` dry run (`dry`/`true` = show the dialogs without restarting, for testing).
+- **Jamf parameters**: `$4` uptime days (blank = 14), `$5` countdown minutes (blank = 5), `$6` dry run (`dry`/`true` = show the dialogs without restarting, for testing).
 - **Configurable variables**: `bannerColor`, `windowTitle`, `iconStyle` (`selfservice` = the Self Service app icon, falling back to the SF Symbol; or `symbol`), `restartIcon` (SF Symbol), `ignoreAssertionApps`.
 - **No dependencies** — uses only built-in macOS tools.
 
