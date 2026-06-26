@@ -15,13 +15,25 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 ### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Set_Time_Zone.sh)
 
-- **Description**: Leverages `AppleScript`, &/or `JamfHelper` and Jamf Pro Scripts to easily display an engaging end-user message to set the timezone.
-- **Features**: Customizable Title, Logo, & Buttons
-- **Optional**: JamfHelper Prompt
+- **Description**: Lets the logged-in user set the Mac's time zone from a branded, native picker, then confirms. Fully native — **no swiftDialog or JamfHelper**. The GUI is built with `osascript` (JXA) + AppKit and shown in the console user's session, so it works even when run as root from Jamf.
+- **Two picker styles** (set `pickerStyle`):
+  - `"dropdown"` *(default)* — an **Area** menu plus a **Zone** menu that repopulates when the area changes.
+  - `"list"` — one scrollable, fixed-height list of every `Area/City` zone.
+- **Configurable variables** (top of the script):
+  - `bannerColor` — banner bar colour, hex (e.g. `#0056D2`)
+  - `pickerStyle` — `"dropdown"` or `"list"`
+  - `windowTitle` — banner title on the picker
+  - `successTitle` / `failTitle` — confirmation window titles
+  - `okButton` — confirmation button label
+- **No dependencies** — uses only built-in macOS tools. Requires root to apply the change (Jamf runs as root).
 
-**Note**: This script also uses [Jamf Pro](https://www.jamf.com/).
+**Dropdown style** (default):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/settimezone_dropdown.png" width="50%">
 
-![Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/firstwindow.png)
+**List style** (`pickerStyle="list"`):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/settimezone_list.png" width="50%">
 
 ## How to Download and Execute Scripts
 
