@@ -174,17 +174,32 @@ if [[ "$selectedTimeZone" == "__CANCEL__" || -z "$selectedTimeZone" ]]; then
 fi
 
 # --- Apply the time zone and confirm ----------------------------------------
-echo "Selected time zone: $selectedTimeZone"
-systemsetup -settimezone "$selectedTimeZone" >/dev/null 2>&1
+echo "------------------------------------------------------------"
+echo "Running as : $(/usr/bin/id -un) (uid $(/usr/bin/id -u))"
+echo "Console user : ${consoleUser:-<none>} (uid ${consoleUID:-n/a})"
+echo "Selected time zone : $selectedTimeZone"
+
+beforeLink="$(/usr/bin/readlink /etc/localtime 2>/dev/null)"
+echo "Before : /etc/localtime -> ${beforeLink:-<none>}"
+
+# Apply (capture output + exit code instead of discarding them)
+setOutput="$(/usr/sbin/systemsetup -settimezone "$selectedTimeZone" 2>&1)"
+setRC=$?
+echo "systemsetup -settimezone exit=$setRC : ${setOutput:-<no output>}"
 
 # Verify against the active /etc/localtime symlink (source of truth, reliable
 # across macOS versions — parsing `systemsetup -gettimezone` output is flaky).
-currentTimeZone=$(/usr/bin/readlink /etc/localtime 2>/dev/null | /usr/bin/sed -E 's#.*/zoneinfo/##')
+afterLink="$(/usr/bin/readlink /etc/localtime 2>/dev/null)"
+currentTimeZone="${afterLink##*zoneinfo/}"
+echo "After  : /etc/localtime -> ${afterLink:-<none>}"
+echo "Active zone now : ${currentTimeZone:-<unknown>}   (wanted: $selectedTimeZone)"
+
 if [[ "$currentTimeZone" == "$selectedTimeZone" ]]; then
-  echo "Time zone successfully set to $selectedTimeZone"
+  echo "RESULT: SUCCESS — time zone is now $selectedTimeZone"
   show_message "$successTitle" "Your time zone is now set to \"$selectedTimeZone\"."
 else
-  echo "Failed to set time zone to $selectedTimeZone"
+  echo "RESULT: FAILED — wanted '$selectedTimeZone' but the active zone is '${currentTimeZone:-unknown}' (systemsetup exit=$setRC: ${setOutput:-<no output>})"
   show_message "$failTitle" "The time zone could not be changed to \"$selectedTimeZone\"."
 fi
+echo "------------------------------------------------------------"
 exit 0
