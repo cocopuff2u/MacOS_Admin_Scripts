@@ -6,12 +6,19 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 ### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Recommend_User_Reboot.sh)
 
-- **Description**: Utilizes `JamfHelper` and `AppleScript` with Jamf Pro Scripts to display engaging end-user messages prompting them to reboot their device based on maximum uptime. 
-- **Features**: Customizable uptime days, logo, title, and message.
+- **Description**: Reminds the user to restart once their Mac has been up beyond a set number of days. Shows a branded reminder; if they agree, a **live countdown** gives them time to save work before the Mac restarts. Fully native — **no swiftDialog or JamfHelper**; the GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
+- **Respects the user**: skips the prompt while a meeting / screen share / presentation / full-screen video is active (a display-sleep assertion is held).
+- **Jamf parameters**: `$4` uptime days (blank = 21), `$5` countdown minutes (blank = 10), `$6` dry run (`dry`/`true` = show the dialogs without restarting, for testing).
+- **Configurable variables**: `bannerColor`, `windowTitle`, `iconStyle` (`selfservice` = the Self Service app icon, falling back to the SF Symbol; or `symbol`), `restartIcon` (SF Symbol), `ignoreAssertionApps`.
+- **No dependencies** — uses only built-in macOS tools.
 
-**Note**: This script requires [Jamf Pro](https://www.jamf.com/).
+**Reminder:**
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendreboot_reminder.png" width="50%">
 
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
+**Live countdown** (after the user clicks Restart Now):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendreboot_countdown.png" width="50%">
 
 ### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Set_Time_Zone.sh)
 
