@@ -42,6 +42,33 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/settimezone_list.png" width="50%">
 
+### 3. [Delete Expired Certificates](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Delete_Expired_Certificates.sh)
+
+- **Description**: Scans the logged-in user's **login keychain** and the **System keychain** for certificates that have already expired, skips any matching an exclude list (default `Apple`), backs up each expired certificate's PEM, then removes it with `security delete-certificate`. Fully native — **no swiftDialog or JamfHelper**. The confirmation GUI is built with `osascript` (JXA) + AppKit and shown in the console user's session, so it works even when run as root from Jamf.
+- **Two run modes**:
+  - `verbose` *(default)* — shows a branded **checklist** of the expired certs found; the user unchecks anything to keep, then clicks **Remove**. A result window confirms the outcome.
+  - `silent` — runs unattended (log only), removing every expired, non-excluded certificate.
+- **Dry run** (`$6`): scans and reports exactly **which certificates would be deleted** (friendly name, expiry, keychain) without changing anything.
+- **Safety**: every removed certificate's PEM is backed up to a timestamped, root-owned folder under `/var/log/expired-cert-backups/` before deletion; the delete is skipped if the backup can't be written. System keychain changes require root (Jamf runs as root).
+- **Two ways to deploy**:
+  - **Self Service** (user clicks it and confirms): leave `HEADLESS=false` and set Jamf Parameter 4 to `verbose` (or leave it blank — verbose is the default).
+  - **Headless / automated** (runs silently, no prompt): set Jamf Parameter 4 to `silent`, **or** set `HEADLESS=true` in the script's Config block.
+  - Always test first with Parameter 6 = `dry` — it lists what *would* be removed and deletes nothing.
+- **Jamf parameter labels** (type these on the script's *Options* tab):
+  - **Parameter 4**: `Action Mode (verbose or silent)` — `verbose` = show the user a confirm window (default); `silent` = remove with no prompt.
+  - **Parameter 5**: `Exclude Patterns (comma-separated)` — names/issuers to never touch; blank = `Apple` (e.g. `Apple,JSS Built-In,Coursera`).
+  - **Parameter 6**: `Dry Run (type dry to preview)` — `dry` = preview only; blank = actually delete.
+- **Configurable variables** (top of the script, with plain-English comments): `HEADLESS`, `DRY_RUN_OVERRIDE`, `EXCLUDE_PATTERNS`, `BACKUP_PARENT`, `logFile`, `bannerColor`, dialog title/labels.
+- **No dependencies** — uses only built-in macOS tools (`security`, `openssl`, `osascript`).
+
+**Confirmation checklist** (verbose mode — each row tagged `[User]` / `[System]`):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_checklist.png" width="50%">
+
+**Result window** (after removal):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
+
 ## How to Download and Execute Scripts
 
 To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
