@@ -69,6 +69,28 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
 
+### 4. [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Collect_User_Logs.sh)
+
+- **Description**: Gathers log files from the Mac (everything under `/var/log`, the system and user `Library/Logs` folders, and `/Library/Management`), zips them into a single archive, and drops it on the logged-in user's Desktop — ready to attach to a support ticket. Fully native — **no swiftDialog or JamfHelper**. Shows a progress spinner, a result window, and reveals the zip in Finder; the GUI runs in the console user's session via `osascript` (JXA) + AppKit, so it works even when run as root from Jamf.
+- **What it grabs**: all `*.log` files (plus rotated `*.log.*` and, optionally, crash/diagnostic reports), preserving each file's original path inside the zip. This includes **Jamf** (`jamf.log`, Self Service logs), **App Auto-Patch** (`aap.log`/`aap_verbose.log`), and **Installomator** (`Installomator.log`) logs. A `_DEVICE_INFO.txt` summary (user, computer name, serial, model, macOS, uptime) is added at the root.
+- **Zip name**: `Logs_<user>_<serial>_<timestamp>.zip`, owned by the user, on their Desktop.
+- **Two ways to deploy**:
+  - **Self Service** (user clicks it, watches progress): leave `HEADLESS=false`, set Jamf Parameter 4 to `verbose` (or blank — the default).
+  - **Headless** (collect silently, no UI): set Jamf Parameter 4 to `silent`, **or** set `HEADLESS=true` in the Config block.
+- **Jamf parameter labels** (script's *Options* tab):
+  - **Parameter 4**: `Action Mode (verbose or silent)`
+  - **Parameter 5**: `Extra Log Folders (comma-separated, optional)` — additional folders to include.
+- **Configurable variables** (top of the script): `HEADLESS`, `LOG_SOURCES`, `INCLUDE_ROTATED`, `INCLUDE_CRASH_REPORTS`, `MAX_FILE_MB`, `ZIP_NAME_PATTERN`, `logFile`, banner colours.
+- **No dependencies** — uses only built-in macOS tools (`find`, `ditto`, `osascript`).
+
+**Progress** (live — shows the folder being scanned and a running file count):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_progress.png" width="50%">
+
+**Result window** (with the zip name ready to copy):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_result.png" width="50%">
+
 ## How to Download and Execute Scripts
 
 To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
