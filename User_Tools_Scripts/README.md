@@ -91,6 +91,46 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_result.png" width="50%">
 
+### 5. [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Network_Health_Check.sh)
+
+- **Description**: Tests the Mac's network connection and shows the user a clear, plain-English results window: a **0–100 Network Score**, a **video-call verdict**, and findings that say what's wrong. It also gives IT the detailed data needed to troubleshoot. Fully native — **no swiftDialog or JamfHelper**. The GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
+- **What it measures**:
+  - **Responsiveness**: lag, latency, jitter, and packet loss to `1.1.1.1` / `8.8.8.8`. The router is measured separately, which tells "your Wi-Fi/router" apart from "your ISP". It works even when the router ignores ping or a VPN is on.
+  - **Reliability**: time spent unresponsive during the test (sustained drop-outs only).
+  - **Speed**: download and upload, plus a bufferbloat grade (latency under load). Uses Apple's built-in `networkQuality` or `speed.cloudflare.com`.
+  - **Web & DNS**: time to first byte for Google, Apple, Microsoft, M365 login, Cloudflare, Zoom, and Teams. Each DNS server is timed against 1.1.1.1 and 8.8.8.8.
+  - **Wi-Fi**: signal, noise, SNR, band/channel, link rate, signal range during the test, and nearby/same-channel networks.
+- **For IT section**:
+  - **Network path**: a traceroute that flags where latency jumps.
+  - **Network configuration**: DHCP, subnet, MAC, MTU, IPv6, proxy/PAC, network extensions, and VPN configurations.
+  - **Health checks**: captive portal, path MTU, clock offset, and interface errors. TCP retransmits too, when run as root.
+  - **This Mac**: Mac info and step timings.
+- **Save Report**: writes a text report to the user's Desktop, including raw command output, ready to attach to a ticket.
+- **Progress window**: a 5-step tracker, live color-coded ping and Mbps readouts with graphs, and a **Cancel** button.
+- **Two ways to deploy**:
+  - **Self Service** (user clicks it, watches progress, reads results): leave `HEADLESS=false` and set Jamf Parameter 4 to `verbose` (or leave it blank).
+  - **Headless** (no UI; report goes to the policy log): set Jamf Parameter 4 to `silent`, **or** set `HEADLESS=true` in the Config block.
+- **Jamf parameter labels** (script's *Options* tab):
+  - **Parameter 4**: `Action Mode (verbose or silent)`
+  - **Parameter 5**: `Speed Test (apple, cloudflare, or off)`. `apple` (default) = multi-stream `networkQuality`; `cloudflare` = single stream; `off` = skip.
+  - **Parameter 6**: `Test Duration in seconds, or "quick"`. Blank = 20 seconds; `quick` = 5-second sample with no speed test.
+  - **Parameter 7**: `Simulate Scenario (testing only — leave blank)`.
+- **Testing**:
+  - **Simulation mode** fakes the results for a scenario, so you can see exactly what users see without breaking a network. Examples: `NHC_SIMULATE=weak-wifi`, `no-internet`, `captive-portal`, `router-bottleneck`, `all-bad`. `NHC_SIMULATE=list` shows all 20 scenarios.
+  - **Step timings** are logged every run.
+  - **Optional JSON results**: `SAVE_JSON=true` writes `/Library/Management/NetworkHealth/last.json` plus a `history.jsonl` log.
+- **Runs as root (Jamf)**: adds the Wi-Fi network name, access point, MCS, channel utilization, and TCP retransmits.
+- **Configurable variables** (top of the script): `HEADLESS`, `TEST_SECONDS`, `INTERNET_TARGETS`, `WEB_TARGETS`, `DNS_TEST_DOMAINS`, `SPEED_ENGINE`, `QUICK_MODE`, `SIMULATE`, `SAVE_JSON`, `REPORT_NAME_PATTERN`, `logFile`, banner colours, and button labels.
+- **No dependencies** — uses only built-in macOS tools (`ping`, `traceroute`, `networkQuality`, `curl`, `dig`, `osascript`).
+
+**Progress** (live readout with a step tracker and Cancel button):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/networkhealth_progress.png" width="50%">
+
+**Results window** (score, video-call verdict, findings, and scrollable details):
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/networkhealth_result.png" width="50%">
+
 ## How to Download and Execute Scripts
 
 To get started with downloading and executing the scripts, please follow the detailed instructions provided in our [How-To Guide](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/How_To_Guide/README.md). This guide will walk you through the necessary steps to ensure you can efficiently download, configure, and run the scripts for your needs.
