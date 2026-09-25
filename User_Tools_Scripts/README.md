@@ -100,7 +100,11 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
   - **Speed**: download and upload, plus a bufferbloat grade (latency under load). Uses Apple's built-in `networkQuality` or `speed.cloudflare.com`.
   - **Web & DNS**: time to first byte for Google, Apple, Microsoft, M365 login, Cloudflare, Zoom, and Teams. Each DNS server is timed against 1.1.1.1 and 8.8.8.8.
   - **Wi-Fi**: signal, noise, SNR, band/channel, link rate, signal range during the test, and nearby/same-channel networks.
+  - **Connection history**: drops in the last 24 hours while the Mac was awake, read from the Mac's own logs. Drops caused by sleep are skipped.
+  - **Other apps**: which apps were using the network during the test (iCloud, OneDrive, backups, updates...).
 - **For IT section**:
+  - **Device management**: MDM enrollment and vendor (Jamf, Intune, Kandji, Mosyle, Workspace ONE...), whether the MDM server is reachable, the Jamf health check, and Apple Push (ports 5223 and 443).
+  - **VPN**: VPN apps installed or running, whether a tunnel is up (full or split), the VPN server and its response time, configured VPN servers, and DNS from the VPN. Nothing to configure; it reads what's on the Mac.
   - **Network path**: a traceroute that flags where latency jumps.
   - **Network configuration**: DHCP, subnet, MAC, MTU, IPv6, proxy/PAC, network extensions, and VPN configurations.
   - **Health checks**: captive portal, path MTU, clock offset, and interface errors. TCP retransmits too, when run as root.
@@ -116,10 +120,10 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
   - **Parameter 6**: `Test Duration in seconds, or "quick"`. Blank = 20 seconds; `quick` = 5-second sample with no speed test.
   - **Parameter 7**: `Simulate Scenario (testing only — leave blank)`.
 - **Testing**:
-  - **Simulation mode** fakes the results for a scenario, so you can see exactly what users see without breaking a network. Examples: `NHC_SIMULATE=weak-wifi`, `no-internet`, `captive-portal`, `router-bottleneck`, `all-bad`. `NHC_SIMULATE=list` shows all 20 scenarios.
+  - **Simulation mode** fakes the results for a scenario, so you can see exactly what users see without breaking a network. Examples: `NHC_SIMULATE=weak-wifi`, `no-internet`, `captive-portal`, `router-bottleneck`, `wifi-drops`, `bandwidth-hog`, `mdm-unreachable`, `all-bad`. `NHC_SIMULATE=list` shows all 23 scenarios.
   - **Step timings** are logged every run.
   - **Optional JSON results**: `SAVE_JSON=true` writes `/Library/Management/NetworkHealth/last.json` plus a `history.jsonl` log.
-- **Runs as root (Jamf)**: adds the Wi-Fi network name, access point, MCS, channel utilization, and TCP retransmits.
+- **Runs as root (Jamf)**: adds the Wi-Fi network name, access point, MCS, channel utilization, TCP retransmits, and the MDM server address.
 - **Configurable variables** (top of the script): `HEADLESS`, `TEST_SECONDS`, `INTERNET_TARGETS`, `WEB_TARGETS`, `DNS_TEST_DOMAINS`, `SPEED_ENGINE`, `QUICK_MODE`, `SIMULATE`, `SAVE_JSON`, `REPORT_NAME_PATTERN`, `logFile`, banner colours, and button labels.
 - **No dependencies** — uses only built-in macOS tools (`ping`, `traceroute`, `networkQuality`, `curl`, `dig`, `osascript`).
 
