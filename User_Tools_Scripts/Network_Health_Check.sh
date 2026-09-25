@@ -1547,10 +1547,10 @@ simulate_run() {
               "8.8.8.8"$'\t'"$(ms $(( ${INET_LAT%.*} + 4 ))) avg · jitter $(ms $INET_JIT) · ${INET_LOSS}% loss"$'\t'"$(lag_status $INET_LAG)")
     hops=("1"$'\t'"$GATEWAY"$'\t'"$R_LAT"$'\t'"0" "2"$'\t'"$ISP_HOP"$'\t'"$ISP_HOP_MS"$'\t'"0" "3"$'\t'"*"$'\t'"-"$'\t'"3" "4"$'\t'"1.1.1.1"$'\t'"$INET_LAT"$'\t'"0")
     DNS_ROWS=("Your DNS 192.168.1.1"$'\t'"$DNS_CFG_AVG ms avg"$'\t'"$( (( DNS_CFG_AVG > 150 )) && print bad || print good)"
-              "Cloudflare 1.1.1.1"$'\t'"10 ms avg"$'\t'"good" "Google 8.8.8.8"$'\t'"14 ms avg"$'\t'"good")
+              "Public: Cloudflare 1.1.1.1"$'\t'"10 ms avg"$'\t'"good" "Public: Google 8.8.8.8"$'\t'"14 ms avg"$'\t'"good")
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
-      web_rows+=("$host"$'\t'"first byte $(ms $(( ${WEB_TTFB%.*} + i*9 ))) · DNS $(ms $WEB_DNS) · TLS $(ms 60) · HTTP/2"$'\t'"$( (( WEB_TTFB > 400 )) && print ok || print good)")
+      web_rows+=("$host"$'\t'"first byte $(ms $(( ${WEB_TTFB%.*} + i*9 ))) · DNS $(ms $WEB_DNS) · TLS done $(ms 60) · HTTP/2"$'\t'"$( (( WEB_TTFB > 400 )) && print ok || print good)")
     done
     n_web=${#WEB_TARGETS}
   fi
@@ -2299,10 +2299,14 @@ build_report() {
     print -r -- "(!) = worth a look    (X) = a problem"
     print -r -- ""
     print -r -- "FINDINGS"
-    while IFS=$'\t' read -r tag t; do
-      case $tag in good) tag="OK  ";; ok) tag="WARN";; bad) tag="FAIL";; *) tag="INFO";; esac
-      print -r -- "  [$tag] $t"
-    done < "$FIND_FILE"
+    # same order as the results window: simulation note, then problems, warnings, info, all-good
+    local _k; for _k in sim bad ok na good; do
+      while IFS=$'\t' read -r tag t; do
+        if [[ $_k == sim ]]; then [[ "$t" == SIMULATED* ]] || continue; else [[ "$tag" == "$_k" && "$t" != SIMULATED* ]] || continue; fi
+        case $tag in good) tag="OK  ";; ok) tag="WARN";; bad) tag="FAIL";; *) tag="INFO";; esac
+        print -r -- "  [$tag] $t"
+      done < "$FIND_FILE"
+    done
     while IFS=$'\t' read -r k a b c; do
       if [[ "$k" == H ]]; then print -r -- ""; print -r -- ""; print -r -- "==================== ${a:u} ===================="
       elif [[ "$k" == S ]]; then print -r -- ""; print -r -- "${a:u}"
@@ -2361,8 +2365,9 @@ while true; do
   logDetail "Video calls" "$VIDEO_TEXT"
   (( ! NO_INTERNET )) && logDetail "Key numbers" "lag $(ms $INET_LAG) · jitter $(ms $INET_JIT) · loss ${INET_LOSS}%$( (( PING_ONLY_LOSS )) && print " (pings only)")$(isnum "$DL_MBPS" && print " · ↓ $(r0 $DL_MBPS) / ↑ $(r0 ${UL_MBPS:-0}) Mbps")${BLOAT_GRADE:+ · bufferbloat $BLOAT_GRADE}"
   logLine "                  Findings:"
-  for _k in bad ok na good; do
-    while IFS=$'\t' read -r _tag _txt; do [[ "$_tag" == "$_k" ]] || continue
+  for _k in sim bad ok na good; do
+    while IFS=$'\t' read -r _tag _txt; do
+      if [[ $_k == sim ]]; then [[ "$_txt" == SIMULATED* ]] || continue; else [[ "$_tag" == "$_k" && "$_txt" != SIMULATED* ]] || continue; fi
       case $_tag in bad) _tag="FAIL";; ok) _tag="WARN";; good) _tag="OK  ";; *) _tag="INFO";; esac
       logLine "                    $_tag  $_txt"
     done < "$FIND_FILE"
