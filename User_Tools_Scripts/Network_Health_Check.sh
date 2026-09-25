@@ -1867,6 +1867,17 @@ run_tests() {
   c1=($(counters))
   fi   # done with the real tests (simulation mode fills in the same things itself)
 
+  # How many errors/resends happened during the test (worked out before scoring, see below)
+  local ierr=$(( ${c1[1]:-0} - ${c0[1]:-0} )) oerr=$(( ${c1[2]:-0} - ${c0[2]:-0} ))
+  local tsent=$(( ${c1[3]:-0} - ${c0[3]:-0} )) tretx=$(( ${c1[4]:-0} - ${c0[4]:-0} )) retx_pct=""
+  (( tsent > 100 )) && retx_pct=$(calc "$tretx*100/$tsent")
+  # If pings are getting lost but real (TCP) traffic barely needs resending, it's the pings being
+  # dropped somewhere along the way, not the connection losing traffic. Don't score it as real loss.
+  PING_ONLY_LOSS=0
+  if (( LOSS_EFF >= 2 )) && [[ -n "$retx_pct" ]] && (( retx_pct < 2 )); then
+    PING_ONLY_LOSS=1; LOSS_EFF=0; INET_LAG=$INET_LAT     # lag's lost-packet penalty doesn't apply to real traffic
+  fi
+
   # 5. Scores -------------------------------------------------------------------------
   spin_status 4 "Scoring results" "Crunching the numbers…" ${P_SCR[1]} 99 1
   # Responsiveness is mostly based on lag.
@@ -1929,10 +1940,6 @@ run_tests() {
   else                            HEADLINE="Laggy & Slow"; SUBHEADLINE="Your connection is slow to react and short on bandwidth. Most online work will feel sluggish."
   fi
 
-  # How many errors/resends happened during the test
-  local ierr=$(( ${c1[1]:-0} - ${c0[1]:-0} )) oerr=$(( ${c1[2]:-0} - ${c0[2]:-0} ))
-  local tsent=$(( ${c1[3]:-0} - ${c0[3]:-0} )) tretx=$(( ${c1[4]:-0} - ${c0[4]:-0} )) retx_pct=""
-  (( tsent > 100 )) && retx_pct=$(calc "$tretx*100/$tsent")
 
   # 6. Findings - the plain-English "What we found" list -------------------------------
   (( VPN_ACTIVE )) && finding na "Connected through a VPN (${VPN_NAME}) — internet results reflect the VPN path."
@@ -1950,7 +1957,7 @@ run_tests() {
     elif [[ -n "$GATEWAY" ]]; then
       finding na "Your router didn't answer ping or traceroute, so the local hop couldn't be measured separately."
     fi
-    if (( LOSS_EFF >= 2 )); then
+    if (( LOSS_EFF >= 2 || PING_ONLY_LOSS )); then
       # Work out WHERE the loss is from what we already measured, instead of guessing
       local where="" confirm=""
       local wifi_ok=1; [[ "$CONN_TYPE" == "Wi-Fi" ]] && isnum "$WIFI_RSSI" && (( WIFI_RSSI < -70 )) && wifi_ok=0
@@ -1964,7 +1971,11 @@ run_tests() {
         (( retx_pct >= 2 )) && confirm=" Real traffic is being resent too (${retx_pct}% TCP resends)." \
                              || confirm=" Real traffic isn't being resent much (${retx_pct}% TCP resends), so this may mostly be pings getting dropped."
       fi
-      finding "$([[ -n $retx_pct ]] && (( retx_pct < 2 )) && print ok || print bad)" "${INET_LOSS}% packet loss: $where.$confirm"
+      if (( PING_ONLY_LOSS )); then
+        finding ok "${INET_LOSS}% of pings were lost, but real traffic barely needed resending (${retx_pct}% TCP resends), so it's most likely just pings being dropped along the way$( (( VPN_ACTIVE )) && print " (common on VPNs)"), not a real problem."
+      else
+        finding bad "${INET_LOSS}% packet loss: $where.$confirm"
+      fi
     elif (( INET_JIT > 30 )); then
       finding ok "High jitter ($(ms $INET_JIT)) — response times swing a lot, typical of busy or weak Wi-Fi. Calls may sound choppy."
     fi
@@ -2071,7 +2082,7 @@ run_tests() {
     row "Internet lag" "$(ms $INET_LAG)" "$(lag_status $INET_LAG)"
     row "Internet latency" "$(ms $INET_LAT)" "$(lag_status $INET_LAT)"
     row "Jitter" "$(ms $INET_JIT)" "$(jitter_status $INET_JIT)"
-    row "Packet loss" "${INET_LOSS}%$( (( INET_LOST_N > 0 )) && print " ($INET_LOST_N of $PING_COUNT pings)")" "$(loss_status $LOSS_EFF)"
+    row "Packet loss" "${INET_LOSS}%$( (( INET_LOST_N > 0 )) && print " ($INET_LOST_N of $PING_COUNT pings)")$( (( PING_ONLY_LOSS )) && print " · pings only, real traffic is fine")" "$( (( PING_ONLY_LOSS )) && print ok || loss_status $LOSS_EFF)"
   fi
   if (( ROUTER_OK )); then
     row "Router (your network)" "$(ms $R_LAT) · jitter $(ms $R_JIT)$(isnum $R_LOSS && print " · ${R_LOSS}% loss")" "$(lag_status $R_LAG)"
