@@ -65,12 +65,18 @@
 #
 # HISTORY
 #
-# 1.10 9/24/26 - Original Release - Responsiveness (lag/latency/jitter/loss, router vs internet),
-#                reliability, speed + bufferbloat, web & DNS timing, Wi-Fi link, 0–100 scoring,
-#                video-call verdict, plain-English findings, "For IT" diagnostics, live progress
-#                window with Cancel, results window with Save Report / Run Again, verbose/silent
-#                modes, quick mode, simulation scenarios, step timings, optional JSON results.
-#                - @cocopuff2u
+# 1.0 9/24/26 - Original Release - Responsiveness (lag/latency/jitter/loss, router vs internet),
+#               reliability, speed + bufferbloat, web & DNS timing, Wi-Fi link, 0–100 scoring,
+#               video-call verdict, plain-English findings, "For IT" diagnostics, live progress
+#               window with Cancel, results window with Save Report / Run Again, verbose/silent
+#               modes, quick mode, simulation scenarios, step timings, optional JSON results.
+#               - @cocopuff2u
+# 1.1 9/24/26 - Data accuracy fixes - traceroute hops now average all probes (multi-address
+#               replies were ignored); your DNS servers labelled correctly even when they're public
+#               resolvers; MAC shows both the in-use (private Wi-Fi) and hardware address; VPN
+#               connection state read correctly; nearby Wi-Fi counts access-point radios on your
+#               channel accurately; Wi-Fi signal sampling no longer cut off at the end of the test;
+#               failed websites retried once before being reported. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -1147,7 +1153,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.10"
+SCRIPT_VERSION="1.1"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step> — records how long the step since the previous mark took (log + report + JSON).
@@ -1261,7 +1267,7 @@ run_tests() {
   done
   [[ -n "$GATEWAY" ]] && { ping_run "$GATEWAY" "$router_file" "$PHYS_IF" & ping_pids+=($!); }
   /usr/sbin/traceroute -n -q 3 -w 1 -m 12 "${INTERNET_TARGETS[1]}" > "$trace_file" 2>/dev/null & local trace_pid=$!
-  local wifi_pid=""; [[ "$CONN_TYPE" == "Wi-Fi" ]] && { wifi_sampler "$TEST_SECONDS" "$wifi_file" & wifi_pid=$!; }
+  local wifi_pid=""; [[ "$CONN_TYPE" == "Wi-Fi" ]] && { wifi_sampler "$(( TEST_SECONDS > 2 ? TEST_SECONDS - 1 : 1 ))" "$wifi_file" & wifi_pid=$!; }
 
   local start=$SECONDS last; local -a lspk
   spin_status 1 "Measuring responsiveness & reliability" "Pinging ${(j:, :)INTERNET_TARGETS}${GATEWAY:+ and your router} for ${TEST_SECONDS}s…" ${P_RSP[1]} ${P_RSP[2]} $TEST_SECONDS 1
@@ -1285,7 +1291,11 @@ run_tests() {
   # give the path trace a few more seconds, then stop it
   for (( i=0; i<12; i++ )); do check_cancel; kill -0 $trace_pid 2>/dev/null || break; /bin/sleep 0.5; done
   kill $trace_pid 2>/dev/null; wait $trace_pid 2>/dev/null
-  [[ -n "$wifi_pid" ]] && { kill $wifi_pid 2>/dev/null; wait $wifi_pid 2>/dev/null; }
+  # the sampler writes its readings only when it finishes — give it a moment rather than cutting it off
+  if [[ -n "$wifi_pid" ]]; then
+    for (( i=0; i<8; i++ )); do kill -0 $wifi_pid 2>/dev/null || break; /bin/sleep 0.5; done
+    kill $wifi_pid 2>/dev/null; wait $wifi_pid 2>/dev/null
+  fi
 
   # Analyse internet targets
   INET_METHOD="ICMP ping"
@@ -1365,12 +1375,16 @@ run_tests() {
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
       check_cancel
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
-      read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 10 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
+      local try
+      for try in 1 2; do     # one retry, so a single blip isn't reported as a failed site
+        read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 10 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
+        [[ -n "$code" && "$code" != 000 ]] && break
+      done
       if [[ -n "$code" && "$code" != 000 ]] && isnum "$ttfb"; then
         dns=$(calc "$dns*1000"); ttfb=$(calc "$ttfb*1000"); conn=$(calc "$conn*1000"); tls=$(calc "$tls*1000")
         (( n_web++ )); sum_ttfb=$(calc "$sum_ttfb+$ttfb"); sum_dns=$(calc "$sum_dns+$dns")
         s=good; (( ttfb > 400 )) && s=ok; (( ttfb > 1000 )) && s=bad
-        web_rows+=("$host"$'\t'"first byte $(ms $ttfb) · DNS $(ms $dns) · TLS $(ms $tls) · HTTP/$hv"$'\t'"$s")
+        web_rows+=("$host"$'\t'"first byte $(ms $ttfb) · DNS $(ms $dns) · TLS done $(ms $tls) · HTTP/$hv"$'\t'"$s")
         web_spark+=($ttfb); live_metric "$(stat_code $s):$(r0 $ttfb) ms" "first byte  ·  $host" "${(j:,:)web_spark}"
       else
         (( web_fail++ )); web_rows+=("$host"$'\t'"Failed to load"$'\t'"bad")
