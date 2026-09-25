@@ -17,10 +17,14 @@
 #                               answers.
 #            • Wi-Fi          - signal strength, noise, channel, link speed, and how crowded the
 #                               channel is.
+#            • History        - how many times the connection dropped in the last 24 hours while the
+#                               Mac was awake (read from the Mac's own logs).
+#            • Other apps     - what else was using the network during the test (iCloud, OneDrive...).
 #          All of that turns into a 0-100 Network Score (90+ Excellent, 80 Good, 70 Okay, 50 Fair,
 #          under 50 Poor), a "ready for video calls?" answer, and a short list of what's wrong in
-#          plain English. Below that is a "For IT" section with the nerdy stuff: traceroute, DNS
-#          timings, proxy/VPN info, MTU, IPv6, clock offset, DHCP, etc. The Save Report button drops
+#          plain English. Below that is a "For IT" section with the nerdy stuff: MDM enrollment and
+#          whether it can reach the MDM server and Apple Push, VPN apps and the VPN server, traceroute,
+#          DNS timings, proxy info, MTU, IPv6, clock offset, DHCP, etc. The Save Report button drops
 #          a text file on the user's Desktop they can attach to a ticket.
 #
 # Note: No swiftDialog or JamfHelper needed. The windows are built with osascript (JXA) + AppKit and
@@ -81,6 +85,11 @@
 #               the "nearby access points" count is accurate now, the Wi-Fi signal readings don't
 #               get cut off at the end of the test, and a website gets one retry before it's
 #               reported as failed. - @cocopuff2u
+# 1.2 9/24/26 - Connection drops from the last 24 hours (skips the ones caused by sleep), which apps
+#               are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks that it
+#               can reach the MDM server and Apple Push, and VPN detection (which apps are installed or
+#               running, whether a tunnel is up, full vs split tunnel, the VPN server and how far away
+#               it is). New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -147,7 +156,7 @@ SIMULATE=""             # Leave blank for a real test. Put a scenario name here 
                         #   healthy  not-connected  no-internet  captive-portal  packet-loss  outage
                         #   ping-blocked  slow-dns  bufferbloat  slow-speed  weak-wifi  2ghz  vpn
                         #   broken-ipv6  router-bottleneck  isp-problem  clock-skew  proxy
-                        #   slow-ethernet  all-bad
+                        #   slow-ethernet  wifi-drops  bandwidth-hog  mdm-unreachable  all-bad
 
 # RESULTS FILE (optional) ---------------------------------------------------
 SAVE_JSON=false                            # true = also save the results as JSON (has to run as root):
@@ -1002,6 +1011,215 @@ misc_checks() {
   CLOCK_OFF_MS=$(/usr/bin/sntp -t 2 time.apple.com 2>/dev/null | /usr/bin/awk '$1 ~ /^[+-][0-9]/{printf "%.0f", $1*1000; exit}')
 }
 
+# --- Connection history (last 24 hours) ------------------------------------------------------------
+# The test only sees the network right now, but people usually complain after the fact ("my call
+# dropped an hour ago"). macOS logs every time the network connection goes down and comes back, so
+# we read the last 24 hours of that. The catch: the connection also goes down every time the Mac
+# sleeps, so we check the sleep/wake log too and only count drops that happened while it was awake.
+history_collect() {   # runs in the background during the ping test
+  /usr/bin/log show --last 24h --style compact \
+    --predicate "subsystem == \"com.apple.IPConfiguration\" AND (eventMessage CONTAINS \"$PHYS_IF link \" OR eventMessage CONTAINS \"DHCP $PHYS_IF: BOUND\")" 2>/dev/null \
+    | /usr/bin/awk '/link (ACTIVE|INACTIVE)$/{print $1" "substr($2,1,8)" L "$NF} /BOUND/{print $1" "substr($2,1,8)" L BOUND"}' > "$SCRATCH/hist_link.txt"
+  /usr/bin/pmset -g log 2>/dev/null \
+    | /usr/bin/awk '$4=="Sleep" || $4=="DarkWake" || ($4=="Wake" && $5!="Requests") {print $1" "$2" P "$4}' > "$SCRATCH/hist_power.txt"
+}
+history_parse() {
+  HIST_DROPS=""; HIST_LAST=""; HIST_LAST_DUR=""; HIST_LONGEST=""; HIST_JOINS=""
+  [[ -s "$SCRATCH/hist_link.txt" ]] || return 0
+  local d tm k ev t out
+  # turn the timestamps into seconds so we can compare them
+  { while read -r d tm k ev; do t=$(strftime -r "%Y-%m-%d %H:%M:%S" "$d $tm" 2>/dev/null) && print -r -- "$t $k $ev"; done < "$SCRATCH/hist_power.txt"
+    while read -r d tm k ev; do t=$(strftime -r "%Y-%m-%d %H:%M:%S" "$d $tm" 2>/dev/null) && print -r -- "$t $k $ev"; done < "$SCRATCH/hist_link.txt"
+  } | /usr/bin/sort -n > "$SCRATCH/hist_all.txt"
+  # A drop only counts if the Mac was awake, it wasn't right after waking up, and the Mac didn't go
+  # to sleep a moment later (going to sleep takes the network down too).
+  out=$(/usr/bin/awk 'NR==FNR { if($2=="P" && $3=="Sleep") S[++n]=$1; next }
+    $2=="P" { st=($3=="Wake")?"awake":(($3=="Sleep")?"asleep":"dark"); lp=$1; next }
+    $3=="INACTIVE" { ok=(st=="awake" && $1-lp>90); for(i=1;i<=n;i++) if(S[i]>=$1-5 && S[i]<=$1+90) ok=0; pend=ok?$1:""; next }
+    $3=="ACTIVE" { if(pend!=""){ d=$1-pend; drops++; if(d>lg) lg=d; last=pend; lastd=d; pend="" } next }
+    $3=="BOUND" { if(st=="awake") joins++ }
+    END { printf "%d %d %s %s %d\n", drops, lg, (last==""?"-":last), (lastd==""?"-":lastd), joins }' "$SCRATCH/hist_all.txt" "$SCRATCH/hist_all.txt")
+  read -r HIST_DROPS HIST_LONGEST HIST_LAST HIST_LAST_DUR HIST_JOINS <<< "$out"
+}
+when_text() {   # epoch seconds -> "2:14 PM" today, or "Tue 2:14 PM"
+  isnum "$1" || { print -r -- "—"; return }
+  if [[ "$(strftime %F "$1")" == "$(strftime %F $EPOCHSECONDS)" ]]; then strftime "%-I:%M %p" "$1"; else strftime "%a %-I:%M %p" "$1"; fi
+}
+dur_text() { isnum "$1" || { print -r -- "?"; return }; (( $1 < 90 )) && print -r -- "${1}s" || print -r -- "$(( $1 / 60 ))m"; }
+
+# --- Apps using the network ------------------------------------------------------------------------
+# "My internet is slow" is often just something else hogging it: iCloud, OneDrive, Dropbox, a backup,
+# a big update. nettop shows how much each app sent/received over a few seconds. It runs during the
+# ping test (before our own speed test) so we're not counting ourselves.
+apps_collect() { /usr/bin/nettop -P -d -L 2 -s 3 -x -J bytes_in,bytes_out > "$SCRATCH/nettop.txt" 2>/dev/null; }
+apps_parse() {
+  APP_ROWS=(); APPS_TOTAL_MBPS=""; APP_TOP=""; APP_TOP_MBPS=""
+  [[ -s "$SCRATCH/nettop.txt" ]] || return 0
+  local line name mbps
+  # nettop prints two samples; the second one is just the last 3 seconds. Add up each app and skip
+  # our own tools (ping, curl, etc.).
+  while IFS=$'\t' read -r name mbps; do
+    case $name in
+      bird|cloudd|fileproviderd) name="iCloud Drive ($name)";;
+      cloudphotod|photolibraryd) name="iCloud Photos ($name)";;
+      nsurlsessiond) name="Background downloads (nsurlsessiond)";;
+      softwareupdated|com.apple.MobileSoftwareUpdate*) name="macOS updates ($name)";;
+      backupd*) name="Time Machine ($name)";;
+      avconferenced) name="FaceTime / video call ($name)";;
+    esac
+    APP_ROWS+=("$name"$'\t'"$mbps")
+    [[ -z "$APP_TOP" ]] && { APP_TOP="$name"; APP_TOP_MBPS="$mbps"; }
+  done < <(/usr/bin/awk -F, '/^,/ {blk++; next} blk==2 && NF>=3 {
+      n=$1; sub(/\.[0-9]+$/,"",n)
+      if (n ~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp|zsh|awk)$/) next
+      b[n]+=$2+$3 }
+    END { for (n in b) if (b[n] > 0) printf "%s\t%.2f\n", n, b[n]*8/3/1000000 }' "$SCRATCH/nettop.txt" | /usr/bin/sort -t$'\t' -k2 -rn | /usr/bin/head -5)
+  APPS_TOTAL_MBPS=$(/usr/bin/awk -F, '/^,/ {blk++; next} blk==2 && NF>=3 { n=$1; sub(/\.[0-9]+$/,"",n); if (n !~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp)$/) t+=$2+$3 } END { printf "%.2f", t*8/3/1000000 }' "$SCRATCH/nettop.txt")
+}
+rate_text() { (( $1 >= 1 )) && print -r -- "$(r0 $1) Mbps" || print -r -- "$(r0 "$(calc "$1*1000")") Kbps"; }
+
+# --- Device management (MDM) -----------------------------------------------------------------------
+# Figures out if the Mac is enrolled in an MDM and which one (Jamf, Intune, Kandji...), then checks it
+# can actually reach that server and Apple's push service. No setup needed, it reads what's on the Mac.
+mgmt_info() {
+  local out host
+  out=$(/usr/bin/profiles status -type enrollment 2>/dev/null)
+  MDM_ENROLLED=$(print -r -- "$out" | /usr/bin/awk -F': ' '/MDM enrollment/{print $2; exit}')     # "Yes (User Approved)" / "No"
+  MDM_ADE=$(print -r -- "$out" | /usr/bin/awk -F': ' '/Enrolled via DEP/{print $2; exit}')         # Automated Device Enrollment
+  # The MDM server address is only readable as root.
+  MDM_URL=""
+  (( amRoot )) && MDM_URL=$(/usr/sbin/system_profiler SPConfigurationProfileDataType 2>/dev/null | /usr/bin/awk -F'= ' '/ServerURL/{gsub(/[";]/,"",$2); print $2; exit}')
+  JAMF_URL=$(/usr/bin/defaults read /Library/Preferences/com.jamfsoftware.jamf jss_url 2>/dev/null)
+
+  # Which MDM is it? Go by the server address if we have it, otherwise by which agent is installed.
+  MDM_VENDOR=""
+  case "${MDM_URL:l}" in
+    *jamfcloud.com*|*jamf*) MDM_VENDOR="Jamf Pro";;
+    *manage.microsoft.com*) MDM_VENDOR="Microsoft Intune";;
+    *kandji*)               MDM_VENDOR="Kandji";;
+    *mosyle*)               MDM_VENDOR="Mosyle";;
+    *awmdm*|*airwatch*)     MDM_VENDOR="Workspace ONE";;
+    *addigy*)               MDM_VENDOR="Addigy";;
+    *jumpcloud*)            MDM_VENDOR="JumpCloud";;
+    *simplemdm*)            MDM_VENDOR="SimpleMDM";;
+    *hexnode*)              MDM_VENDOR="Hexnode";;
+    *fleetdm*|*fleet*)      MDM_VENDOR="Fleet";;
+  esac
+  if [[ -z "$MDM_VENDOR" ]]; then
+    if   [[ -n "$JAMF_URL" || -e /usr/local/jamf/bin/jamf ]]; then MDM_VENDOR="Jamf Pro"
+    elif [[ -e "/Library/Intune/Microsoft Intune Agent.app" || -e "/Applications/Company Portal.app" ]]; then MDM_VENDOR="Microsoft Intune"
+    elif [[ -e /Library/Kandji ]]; then MDM_VENDOR="Kandji"
+    elif [[ -e "/Library/Application Support/Mosyle" || -e "/Applications/Self-Service.app/Contents/Info.plist" && -n "$(/usr/bin/defaults read "/Applications/Self-Service.app/Contents/Info" CFBundleIdentifier 2>/dev/null | /usr/bin/grep -i mosyle)" ]]; then MDM_VENDOR="Mosyle"
+    elif [[ -e "/Applications/Workspace ONE Intelligent Hub.app" ]]; then MDM_VENDOR="Workspace ONE"
+    elif [[ -e /Library/Addigy ]]; then MDM_VENDOR="Addigy"
+    elif [[ -e /opt/jc ]]; then MDM_VENDOR="JumpCloud"
+    fi
+  fi
+
+  # Can we reach the management server?
+  MDM_HOST=""; MDM_REACH=""; MDM_MS=""; JAMF_HEALTH=""
+  host="${MDM_URL:-$JAMF_URL}"; host="${host#*://}"; host="${host%%/*}"; host="${host%%:*}"
+  [[ -z "$host" && "$MDM_VENDOR" == "Microsoft Intune" ]] && host="enrollment.manage.microsoft.com"
+  if [[ -n "$host" ]]; then
+    MDM_HOST="$host"
+    read -r out MDM_MS <<< "$(/usr/bin/curl -s -o /dev/null -m 8 -w '%{http_code} %{time_connect}' "https://$host/" 2>/dev/null)"
+    if [[ -n "$out" && "$out" != 000 ]]; then MDM_REACH=yes; MDM_MS=$(calc "$MDM_MS*1000"); else MDM_REACH=no; MDM_MS=""; fi
+  fi
+  if [[ -n "$JAMF_URL" ]]; then   # Jamf's own health check page returns "[]" when the server is happy
+    out=$(/usr/bin/curl -s -m 8 "${JAMF_URL%/}/healthCheck.html" 2>/dev/null)
+    [[ "$out" == "[]" ]] && JAMF_HEALTH="healthy" || JAMF_HEALTH="${out:-no answer}"
+  fi
+
+  # Apple Push (APNs) is how MDM commands, notifications, FaceTime and iMessage reach the Mac. It uses
+  # port 5223, and can fall back to 443 if 5223 is blocked.
+  APNS_5223=""; APNS_443=""
+  local t0=$EPOCHREALTIME
+  /usr/bin/nc -z -G 3 courier.push.apple.com 5223 >/dev/null 2>&1 && APNS_5223=$(calc "($EPOCHREALTIME-$t0)*1000")
+  t0=$EPOCHREALTIME
+  /usr/bin/nc -z -G 3 courier.push.apple.com 443 >/dev/null 2>&1 && APNS_443=$(calc "($EPOCHREALTIME-$t0)*1000")
+  # Apple's enrollment service (used when a Mac enrolls or re-enrolls)
+  APPLE_ENROLL=""
+  out=$(/usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code}' https://deviceenrollment.apple.com/ 2>/dev/null)
+  [[ -n "$out" && "$out" != 000 ]] && APPLE_ENROLL=yes || APPLE_ENROLL=no
+}
+
+# --- VPN clients --------------------------------------------------------------------------------------
+# Finds VPN apps that are installed or running, whether a tunnel is actually up (and if everything
+# goes through it or just some traffic), and where the VPN server is. Nothing to configure: it reads the
+# app settings, the Mac's VPN settings, and the routing table.
+VPN_CLIENTS=(   # "name|app path|process name to look for"
+  "GlobalProtect|/Applications/GlobalProtect.app|PanGPS"
+  "Cisco Secure Client|/Applications/Cisco/Cisco Secure Client.app|vpnagentd"
+  "Cisco AnyConnect|/Applications/Cisco/Cisco AnyConnect Secure Mobility Client.app|vpnagentd"
+  "Zscaler|/Applications/Zscaler/Zscaler.app|ZscalerTunnel"
+  "Cloudflare WARP|/Applications/Cloudflare WARP.app|CloudflareWARP"
+  "FortiClient|/Applications/FortiClient.app|fctservctl2"
+  "Ivanti Secure Access|/Applications/Ivanti Secure Access.app|dsAccessService"
+  "Pulse Secure|/Applications/Pulse Secure.app|dsAccessService"
+  "Check Point VPN|/Applications/Endpoint Security VPN.app|tracd"
+  "F5 BIG-IP Edge|/Applications/BIG-IP Edge Client.app|svpn"
+  "Netskope|/Applications/Netskope Client.app|Netskope Client"
+  "Twingate|/Applications/Twingate.app|Twingate"
+  "Tailscale|/Applications/Tailscale.app|IPNExtension"
+  "OpenVPN Connect|/Applications/OpenVPN Connect.app|ovpnagent"
+  "Tunnelblick|/Applications/Tunnelblick.app|openvpn"
+  "WireGuard|/Applications/WireGuard.app|WireGuardNetworkExtension"
+  "NordVPN|/Applications/NordVPN.app|NordVPN"
+  "ProtonVPN|/Applications/ProtonVPN.app|ProtonVPN"
+  "ExpressVPN|/Applications/ExpressVPN.app|expressvpnd"
+  "Mullvad|/Applications/Mullvad VPN.app|mullvad-daemon"
+)
+vpn_info() {
+  local e n app proc st i a flags
+  VPN_APPS=""; VPN_RUNNING=""
+  for e in $VPN_CLIENTS; do
+    n="${e%%|*}"; app="${${e#*|}%|*}"; proc="${e##*|}"
+    [[ -e "$app" ]] || /usr/bin/pgrep -qf -- "$proc" || continue
+    if /usr/bin/pgrep -qf -- "$proc"; then st="running"; VPN_RUNNING+="${VPN_RUNNING:+, }$n"; else st="installed, not running"; fi
+    VPN_APPS+="${VPN_APPS:+; }$n ($st)"
+  done
+
+  # Where each VPN connects to (read from the app's settings / the Mac's VPN settings)
+  VPN_SERVERS=""
+  a=$(/usr/bin/plutil -extract "Palo Alto Networks.GlobalProtect.PanSetup.Portal" raw /Library/Preferences/com.paloaltonetworks.GlobalProtect.settings.plist 2>/dev/null)
+  [[ -n "$a" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }GlobalProtect portal $a"
+  a=$(/usr/bin/grep -hoE '<HostAddress>[^<]+' /opt/cisco/secureclient/vpn/profile/*.xml /opt/cisco/anyconnect/profile/*.xml 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/<HostAddress>//')
+  if [[ -n "$a" ]]; then
+    [[ -e "/Applications/Cisco" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }Cisco $a" || VPN_SERVERS+="${VPN_SERVERS:+; }Cisco $a (old profile, app not installed)"
+  fi
+  local line name
+  while IFS= read -r line; do
+    name=$(print -r -- "$line" | /usr/bin/awk -F'"' '{print $2}'); [[ -n "$name" ]] || continue
+    a=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/(Comm)?RemoteAddress/{print $2; exit}')
+    [[ -n "$a" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }$name $a"
+  done < <(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '"')
+
+  # Is a tunnel actually up? macOS has a bunch of its own utun interfaces, but a real VPN tunnel has
+  # an IPv4 address on it.
+  VPN_TUNNELS=""; VPN_MODE=""
+  for i in ${=$(/sbin/ifconfig -l)}; do
+    [[ "$i" == (utun|ppp|ipsec|gpd|tun|tap|wg)* ]] || continue
+    a=$(/sbin/ifconfig "$i" 2>/dev/null | /usr/bin/awk '/inet /{print $2; exit}')
+    [[ -n "$a" && "$a" != 169.254.* ]] && VPN_TUNNELS+="${VPN_TUNNELS:+, }$i $a"
+  done
+  if [[ -n "$VPN_TUNNELS" ]]; then
+    (( VPN_ACTIVE )) && VPN_MODE="full tunnel (all traffic goes through the VPN)" || VPN_MODE="split tunnel (only some traffic goes through the VPN)"
+  fi
+
+  # The VPN server's real address: when a VPN is on, it adds a route so its own traffic to the server
+  # still goes out the normal Wi-Fi/Ethernet. That route gives the server away.
+  VPN_GW=""; VPN_GW_MS=""
+  if [[ -n "$VPN_TUNNELS" && -n "$GATEWAY" ]]; then
+    VPN_GW=$(/usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk -v gw="$GATEWAY" -v ifc="$PHYS_IF" \
+      '$2==gw && $4==ifc && $3 ~ /H/ && $3 ~ /S/ && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $1 !~ /^169\.254\./ {print $1; exit}')
+    if [[ -n "$VPN_GW" ]]; then
+      VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+    fi
+  fi
+  # DNS servers the VPN pushed (resolvers tied to a tunnel interface)
+  VPN_DNS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/^resolver/{ns=""} /nameserver\[/{ns=ns (ns==""?"":", ") $3} /if_index/ && /(utun|ppp|ipsec)/ && ns!="" {print ns; ns=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -2 | /usr/bin/paste -sd';' -)
+}
+
 # --- Speed ------------------------------------------------------------------------
 # Both of these fill in the download/upload speed and the lag with and without load.
 speed_apple() {
@@ -1055,12 +1273,12 @@ speed_cloudflare() {
 #   NHC_SIMULATE=weak-wifi,vpn ./Network_Health_Check.sh
 SIM_SCENARIOS=(healthy not-connected no-internet captive-portal packet-loss outage ping-blocked slow-dns
                bufferbloat slow-speed weak-wifi 2ghz vpn broken-ipv6 router-bottleneck isp-problem
-               clock-skew proxy slow-ethernet all-bad)
+               clock-skew proxy slow-ethernet wifi-drops bandwidth-hog mdm-unreachable all-bad)
 
 simulate_run() {
   sim_sleep() { [[ "$ACTION_MODE" == verbose ]] && /bin/sleep "$1"; return 0; }   # silent mode doesn't need the pauses
   local sc="$SIMULATE" i host
-  [[ "$sc" == all-bad ]] && sc="weak-wifi,packet-loss,outage,slow-dns,bufferbloat,slow-speed,vpn,broken-ipv6,clock-skew,proxy"
+  [[ "$sc" == all-bad ]] && sc="weak-wifi,packet-loss,outage,slow-dns,bufferbloat,slow-speed,vpn,broken-ipv6,clock-skew,proxy,wifi-drops,bandwidth-hog,mdm-unreachable"
   sim() { [[ ",$sc," == *",$1,"* ]]; }
   RUN_SUBTITLE="SIMULATION ($SIMULATE) · $RUN_SUBTITLE"
   logMe INFO "SIMULATION MODE — scenario: $SIMULATE (nothing is actually measured)"
@@ -1091,6 +1309,10 @@ simulate_run() {
   CAPTIVE="none"; PMTU=1500; CLOCK_OFF_MS=12
   DL_MBPS=250; UL_MBPS=40; IDLE_MS=18; LOADED_MS=35; SPEED_SERVER="Simulated server"; SPEED_NOTE="Simulated result"
   c0=(0 0 0 0); c1=(0 0 0 0)
+  HIST_DROPS=0; HIST_LAST=""; HIST_LAST_DUR=""; HIST_LONGEST=0; APP_ROWS=(); APP_TOP=""; APP_TOP_MBPS=""
+  MDM_ENROLLED="Yes (User Approved)"; MDM_ADE="Yes"; MDM_VENDOR="Jamf Pro"; MDM_URL=""; JAMF_URL="https://example.jamfcloud.com/"
+  MDM_HOST="example.jamfcloud.com"; MDM_REACH=yes; MDM_MS=42; JAMF_HEALTH="healthy"; APNS_5223=35; APNS_443=30; APPLE_ENROLL=yes
+  VPN_APPS="GlobalProtect (running)"; VPN_RUNNING="GlobalProtect"; VPN_SERVERS="GlobalProtect portal vpn.example.com"; VPN_TUNNELS=""; VPN_MODE=""; VPN_GW=""; VPN_GW_MS=""; VPN_DNS=""
 
   # Then break whatever the scenario says to break -----------------------------------
   sim weak-wifi   && { WIFI_RSSI=-78; WIFI_NOISE=-92; WS_MIN=-84; WS_AVG=-78; WS_MAX=-72; WIFI_TX=29; WS_TXMIN=6; WS_TXMAX=58; INET_JIT=38; INET_LAT=44; INET_LAG=52; INET_LOSS=1.5; R_LAT=28; R_JIT=22; R_LAG=31; }
@@ -1101,11 +1323,15 @@ simulate_run() {
   sim slow-dns    && { DNS_CFG_AVG=240; WEB_DNS=260; WEB_TTFB=520; }
   sim bufferbloat && { LOADED_MS=640; }
   sim slow-speed  && { DL_MBPS=6.2; UL_MBPS=0.9; LOADED_MS=310; }
+  sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"; }
   sim vpn         && { VPN_ACTIVE=1; VPN_NAME="Corporate VPN (simulated)"; PMTU=1400; INET_LAT=$(( INET_LAT + 30 )); INET_LAG=$(( INET_LAG + 30 )); VPN_CONFIGS="Corporate VPN (Connected)"; NE_LIST="Example VPN Extension"; }
   sim broken-ipv6 && { IPV6_ADDR="2001:db8::50"; IPV6_NET="broken"; }
   sim router-bottleneck && { R_LAT=118; R_JIT=45; R_LAG=140; R_LOSS=4; INET_LAT=150; INET_LAG=170; INET_JIT=48; }
   sim isp-problem && { R_LAT=3; R_LAG=3; ISP_HOP_MS=150; INET_LAT=185; INET_LAG=190; INET_JIT=12; }
   sim clock-skew  && { CLOCK_OFF_MS=312000; }
+  sim wifi-drops  && { HIST_DROPS=5; HIST_LAST=$(( EPOCHSECONDS - 2400 )); HIST_LAST_DUR=48; HIST_LONGEST=190; }
+  sim bandwidth-hog && { APP_ROWS=("OneDrive"$'\t'"38.5" "iCloud Drive (bird)"$'\t'"4.2" "Slack"$'\t'"0.1"); APP_TOP="OneDrive"; APP_TOP_MBPS=38.5; DL_MBPS=18; }
+  sim mdm-unreachable && { MDM_REACH=no; MDM_MS=""; JAMF_HEALTH="no answer"; APNS_5223=""; APNS_443=""; }
   sim proxy       && { PROXY_DESC="PAC http://proxy.example.com/proxy.pac"; }
   sim slow-ethernet && { CONN_TYPE="Ethernet"; PHYS_IF="en5"; PORT_NAME="USB 10/100 LAN"; IF_MEDIA="autoselect (100baseTX <half-duplex>)"; DL_MBPS=88; UL_MBPS=85; }
   if sim captive-portal || sim no-internet; then
@@ -1165,7 +1391,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.1"
+SCRIPT_VERSION="1.2"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
@@ -1205,6 +1431,10 @@ write_json() {
     print -r -- "  \"reliability\": {\"responsive_pct\": $(jnum "$REL_PCT"), \"outages\": $(jnum "$OUTAGE_EVENTS"), \"longest_outage_s\": $(jnum "$OUTAGE_LONGEST_S")},"
     print -r -- "  \"speed\": {\"down_mbps\": $(jnum "$DL_MBPS"), \"up_mbps\": $(jnum "$UL_MBPS"), \"idle_ms\": $(jnum "$IDLE_MS"), \"loaded_ms\": $(jnum "$LOADED_MS"), \"bufferbloat\": $(jstr "$BLOAT_GRADE")},"
     print -r -- "  \"web\": {\"ttfb_ms\": $(jnum "$WEB_TTFB"), \"dns_ms\": $(jnum "$WEB_DNS"), \"failures\": $(jnum "$web_fail"), \"dns_server_ms\": $(jnum "$DNS_CFG_AVG"), \"public_dns_ms\": $(jnum "$DNS_PUB_BEST")},"
+    print -r -- "  \"history_24h\": {\"drops_while_awake\": $(jnum "$HIST_DROPS"), \"last_drop\": $(isnum "$HIST_LAST" && jstr "$(strftime '%Y-%m-%dT%H:%M:%S' $HIST_LAST)" || print -n null), \"longest_s\": $(jnum "$HIST_LONGEST")},"
+    print -r -- "  \"top_app\": {\"name\": $(jstr "$APP_TOP"), \"mbps\": $(jnum "$APP_TOP_MBPS")},"
+    print -r -- "  \"management\": {\"mdm\": $(jstr "$MDM_ENROLLED"), \"ade\": $(jstr "$MDM_ADE"), \"vendor\": $(jstr "$MDM_VENDOR"), \"server\": $(jstr "$MDM_HOST"), \"server_reachable\": $(jstr "$MDM_REACH"), \"apns_5223_ms\": $(jnum "$APNS_5223"), \"apns_443_ms\": $(jnum "$APNS_443")},"
+    print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_ms\": $(jnum "$VPN_GW_MS")},"
     print -r -- "  \"checks\": {\"captive_portal\": $(jstr "$CAPTIVE"), \"ipv6\": $(jstr "${IPV6_NET:-not configured}"), \"path_mtu\": $(jnum "$PMTU"), \"clock_offset_ms\": $(jnum "$CLOCK_OFF_MS"), \"proxy\": $(jstr "$PROXY_DESC")},"
     print -rn -- "  \"timings_s\": {"; first=1
     for t in $TIMINGS; do (( first )) || print -rn -- ", "; first=0; print -rn -- "$(jstr "${t% *}"): ${t#* }"; done
@@ -1279,6 +1509,8 @@ run_tests() {
   done
   [[ -n "$GATEWAY" ]] && { ping_run "$GATEWAY" "$router_file" "$PHYS_IF" & ping_pids+=($!); }
   /usr/sbin/traceroute -n -q 3 -w 1 -m 12 "${INTERNET_TARGETS[1]}" > "$trace_file" 2>/dev/null & local trace_pid=$!
+  history_collect & local hist_pid=$!     # last 24h of connection drops (reads the Mac's logs)
+  apps_collect & local apps_pid=$!        # which apps are using the network right now
   local wifi_pid=""; [[ "$CONN_TYPE" == "Wi-Fi" ]] && { wifi_sampler "$(( TEST_SECONDS > 2 ? TEST_SECONDS - 1 : 1 ))" "$wifi_file" & wifi_pid=$!; }
 
   local start=$SECONDS last; local -a lspk
@@ -1304,6 +1536,10 @@ run_tests() {
   # give traceroute a few more seconds to finish, then stop it
   for (( i=0; i<12; i++ )); do check_cancel; kill -0 $trace_pid 2>/dev/null || break; /bin/sleep 0.5; done
   kill $trace_pid 2>/dev/null; wait $trace_pid 2>/dev/null
+  # the log reader and app check usually finish well before the pings, but give them a moment if not
+  for (( i=0; i<20; i++ )); do check_cancel; kill -0 $hist_pid 2>/dev/null || kill -0 $apps_pid 2>/dev/null || break; /bin/sleep 0.5; done
+  kill_tree $hist_pid; kill_tree $apps_pid; wait $hist_pid $apps_pid 2>/dev/null
+  history_parse; apps_parse
   # the Wi-Fi reader only saves when it's done, so give it a moment instead of cutting it off
   if [[ -n "$wifi_pid" ]]; then
     for (( i=0; i<8; i++ )); do kill -0 $wifi_pid 2>/dev/null || break; /bin/sleep 0.5; done
@@ -1410,6 +1646,7 @@ run_tests() {
   fi
   (( n_web )) && { WEB_TTFB=$(calc "$sum_ttfb/$n_web"); WEB_DNS=$(calc "$sum_dns/$n_web"); } || { WEB_TTFB="-"; WEB_DNS="-"; }
   misc_checks
+  mgmt_info; vpn_info
   check_cancel; mark web_dns
 
   # 4. Speed ------------------------------------------------------------------------
@@ -1540,6 +1777,21 @@ run_tests() {
     isnum "$WIFI_COCHAN_STRONG" && (( WIFI_COCHAN_STRONG >= 4 )) && finding ok "$WIFI_COCHAN_STRONG other strong access points share Wi-Fi channel $WIFI_CH — interference likely."
     isnum "${WIFI_CCA%%[^0-9]*}" && (( ${WIFI_CCA%%[^0-9]*} >= 50 )) && finding ok "Wi-Fi channel is busy ${WIFI_CCA} of the time — congestion."
   fi
+  if isnum "$HIST_DROPS" && (( HIST_DROPS > 0 )); then
+    finding "$( (( HIST_DROPS >= 3 )) && print bad || print ok)" "Your connection dropped $HIST_DROPS time$( (( HIST_DROPS > 1 )) && print s) in the last 24 hours while the Mac was awake (last at $(when_text $HIST_LAST), down $(dur_text $HIST_LAST_DUR))."
+  fi
+  if isnum "$APP_TOP_MBPS" && (( APP_TOP_MBPS >= 5 )); then
+    finding ok "${APP_TOP} was using $(rate_text $APP_TOP_MBPS) during the test. Other apps using the network can make things feel slow and lower the speed results."
+  fi
+  if [[ "$MDM_ENROLLED" == Yes* && "$MDM_REACH" == no ]]; then
+    finding bad "This Mac can't reach its management server ($MDM_HOST). Policies, apps and updates from IT won't come through."
+  fi
+  [[ -n "$JAMF_HEALTH" && "$JAMF_HEALTH" != healthy ]] && finding ok "The Jamf server's health check didn't come back healthy ($JAMF_HEALTH)."
+  [[ "$MDM_ENROLLED" == "Yes" ]] && finding ok "MDM enrollment isn't user-approved, so some management features won't work."
+  if [[ -z "$APNS_5223" && -z "$APNS_443" ]] && (( ! NO_INTERNET )); then
+    finding bad "Can't reach Apple's push service. MDM commands, notifications, FaceTime and iMessage may not arrive."
+  fi
+  isnum "$VPN_GW_MS" && (( VPN_GW_MS > 100 )) && finding ok "The VPN server is slow to reach ($VPN_GW_MS ms), and everything goes through it."
   (( ierr + oerr > 0 )) && finding ok "$(( ierr + oerr )) network interface errors during the test."
   [[ -n "$retx_pct" ]] && (( retx_pct >= 2 )) && finding ok "TCP retransmits at ${retx_pct}% — packets are being lost and resent."
   [[ "$MAC_LOWPOWER" == 1 ]] && finding na "Low Power Mode is on — it can limit network performance."
@@ -1615,11 +1867,21 @@ run_tests() {
       row "Bufferbloat" "Grade $BLOAT_GRADE  (+$(ms $BLOAT_MS) when busy)" $s
     fi
   fi
+  if (( ${#APP_ROWS} )); then
+    local apps_txt=""; for t in ${APP_ROWS[1,3]}; do apps_txt+="${apps_txt:+ · }${t%%$'\t'*} $(rate_text ${t##*$'\t'})"; done
+    row "Other apps using the network" "$apps_txt" "$( isnum "$APP_TOP_MBPS" && (( APP_TOP_MBPS >= 5 )) && print ok || print na)"
+  elif [[ -s "$SCRATCH/nettop.txt" || -n "$SIMULATE" ]]; then
+    row "Other apps using the network" "Nothing noticeable" good
+  fi
 
   section "Reliability  ·  score $REL_SCORE" "checkmark.shield"
   s=good; (( REL_PCT < 99 )) && s=ok; (( REL_PCT < 95 )) && s=bad
   row "Responsive during test" "${REL_PCT}%" $s
   row "Outages" "$( (( OUTAGE_EVENTS )) && print "$OUTAGE_EVENTS (longest ${OUTAGE_LONGEST_S}s)" || print None)" "$( (( OUTAGE_EVENTS )) && print bad || print good)"
+  if isnum "$HIST_DROPS"; then
+    if (( HIST_DROPS == 0 )); then row "Drops in the last 24 hours" "None while the Mac was awake" good
+    else row "Drops in the last 24 hours" "$HIST_DROPS while awake · last at $(when_text $HIST_LAST) (down $(dur_text $HIST_LAST_DUR)) · longest $(dur_text $HIST_LONGEST)" "$( (( HIST_DROPS >= 3 )) && print bad || print ok)"; fi
+  fi
 
   if (( ${#web_rows} )); then
     section "Websites" "globe"
@@ -1651,6 +1913,23 @@ run_tests() {
   row "Proxy" "${PROXY_DESC:-None}" "$([[ -n $PROXY_DESC ]] && print ok || print na)"
   row "Network extensions" "${NE_LIST:-None}" na
   row "VPN configurations" "${VPN_CONFIGS:-None}" na
+
+  section "Device Management" "building.2"
+  row "MDM enrollment" "${MDM_ENROLLED:-unknown}$([[ $MDM_ADE == Yes ]] && print " · via Automated Device Enrollment")" "$( [[ $MDM_ENROLLED == "Yes (User Approved)" ]] && print good || { [[ $MDM_ENROLLED == Yes ]] && print ok || print na; })"
+  [[ -n "$MDM_VENDOR" ]] && row "Managed by" "$MDM_VENDOR${MDM_URL:+ · $MDM_URL}${JAMF_URL:+$([[ -z $MDM_URL ]] && print " · $JAMF_URL")}" na
+  [[ -n "$MDM_HOST" ]] && row "Management server" "$([[ $MDM_REACH == yes ]] && print "Reachable · $(ms $MDM_MS) · $MDM_HOST" || print "Can't reach $MDM_HOST")" "$([[ $MDM_REACH == yes ]] && print good || print bad)"
+  [[ -n "$JAMF_HEALTH" ]] && row "Jamf health check" "$JAMF_HEALTH" "$([[ $JAMF_HEALTH == healthy ]] && print good || print ok)"
+  row "Apple Push (port 5223)" "$(isnum "$APNS_5223" && print "Reachable · $(ms $APNS_5223)" || print "Blocked")" "$(isnum "$APNS_5223" && print good || print ok)"
+  row "Apple Push (port 443 fallback)" "$(isnum "$APNS_443" && print "Reachable · $(ms $APNS_443)" || print "Blocked")" "$(isnum "$APNS_443" && print good || { isnum "$APNS_5223" && print na || print bad; })"
+  row "Apple enrollment service" "$([[ $APPLE_ENROLL == yes ]] && print Reachable || print "Can't reach deviceenrollment.apple.com")" "$([[ $APPLE_ENROLL == yes ]] && print good || print ok)"
+  [[ "$MDM_ENROLLED" == Yes* ]] && (( ! amRoot )) && row "Note" "Run as root (Jamf) to see the MDM server address" na
+
+  section "VPN" "lock.shield"
+  row "VPN apps" "${VPN_APPS:-None found}" na
+  row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" "$([[ -n $VPN_TUNNELS ]] && print ok || print na)"
+  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW$(isnum "$VPN_GW_MS" && print " · $VPN_GW_MS ms" || print " · doesn't answer ping")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
+  [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
 
   if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
     section "Wi-Fi Details" "antenna.radiowaves.left.and.right"
