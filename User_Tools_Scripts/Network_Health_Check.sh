@@ -1917,6 +1917,9 @@ run_tests() {
     HEADLINE="No Internet"; SUBHEADLINE="Connected to ${CONN_TYPE}, but nothing on the internet answered. Check the network, captive portal, or VPN."
   elif (( REL_SCORE < 75 )); then
     HEADLINE="Unstable Connection"; SUBHEADLINE="Your connection dropped out during the test. Calls, uploads, and remote sessions may disconnect."
+  elif (( LOSS_EFF >= 2 )) && [[ "$(lag_status $INET_LAT)" != bad ]]; then
+    HEADLINE="$([[ -n $SPEED_SCORE ]] && (( SPEED_SCORE >= 80 )) && print "Fast but Dropping Packets" || print "Dropping Packets")"
+    SUBHEADLINE="Response times are fine, but ${INET_LOSS}% of packets are getting lost. Video calls may freeze or cut out, and pages may stall."
   elif [[ -z "$SPEED_SCORE" ]]; then
     (( rgood )) && { HEADLINE="Responsive"; SUBHEADLINE="Quick to react — good for calls, browsing, and remote sessions. (Speed test skipped.)"; } \
                 || { HEADLINE="Laggy"; SUBHEADLINE="Slow to react — calls and remote sessions may stutter. (Speed test skipped.)"; }
@@ -1948,7 +1951,20 @@ run_tests() {
       finding na "Your router didn't answer ping or traceroute, so the local hop couldn't be measured separately."
     fi
     if (( LOSS_EFF >= 2 )); then
-      finding bad "${INET_LOSS}% packet loss — congestion or a weak signal is forcing resends (lag $(ms $INET_LAG) vs latency $(ms $INET_LAT))."
+      # Work out WHERE the loss is from what we already measured, instead of guessing
+      local where="" confirm=""
+      local wifi_ok=1; [[ "$CONN_TYPE" == "Wi-Fi" ]] && isnum "$WIFI_RSSI" && (( WIFI_RSSI < -70 )) && wifi_ok=0
+      local router_ok=0; (( ROUTER_OK )) && [[ "$(lag_status $R_LAG)" == good ]] && router_ok=1
+      if (( ! wifi_ok )); then where="most likely from the weak Wi-Fi signal"
+      elif (( router_ok && VPN_ACTIVE )); then where="your Wi-Fi and router look fine, so it's happening on the VPN connection. Try a different VPN server or protocol"
+      elif (( router_ok )); then where="your Wi-Fi and router look fine, so it's happening past your network (internet provider or further out)"
+      else where="congestion or interference on the network is the likely cause"; fi
+      # TCP resends (root only) tell us if real traffic is being lost too, or just pings
+      if [[ -n "$retx_pct" ]]; then
+        (( retx_pct >= 2 )) && confirm=" Real traffic is being resent too (${retx_pct}% TCP resends)." \
+                             || confirm=" Real traffic isn't being resent much (${retx_pct}% TCP resends), so this may mostly be pings getting dropped."
+      fi
+      finding "$([[ -n $retx_pct ]] && (( retx_pct < 2 )) && print ok || print bad)" "${INET_LOSS}% packet loss: $where.$confirm"
     elif (( INET_JIT > 30 )); then
       finding ok "High jitter ($(ms $INET_JIT)) — response times swing a lot, typical of busy or weak Wi-Fi. Calls may sound choppy."
     fi
