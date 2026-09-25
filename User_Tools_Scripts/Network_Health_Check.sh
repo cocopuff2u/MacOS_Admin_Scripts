@@ -1550,7 +1550,7 @@ simulate_run() {
               "Public: Cloudflare 1.1.1.1"$'\t'"10 ms avg"$'\t'"good" "Public: Google 8.8.8.8"$'\t'"14 ms avg"$'\t'"good")
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
-      web_rows+=("$host"$'\t'"first byte $(ms $(( ${WEB_TTFB%.*} + i*9 ))) · DNS $(ms $WEB_DNS) · TLS done $(ms 60) · HTTP/2"$'\t'"$( (( WEB_TTFB > 400 )) && print ok || print good)")
+      web_rows+=("$host"$'\t'"first byte $(ms $(( ${WEB_TTFB%.*} + i*9 ))) · DNS $(ms $WEB_DNS) · TLS done $(ms $(( ${WEB_DNS%.*} + 45 ))) · HTTP/2"$'\t'"$( (( WEB_TTFB > 400 )) && print ok || print good)")
     done
     n_web=${#WEB_TARGETS}
   fi
