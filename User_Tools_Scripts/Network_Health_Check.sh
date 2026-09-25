@@ -89,8 +89,11 @@
 #               are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks that it
 #               can reach the MDM server and Apple Push, and VPN detection (which apps are installed or
 #               running, whether a tunnel is up, full vs split tunnel, the VPN server and how far away
-#               it is, even if it ignores ping). Shows the tunnel's MTU and the Mac's own VPN
-#               connections. New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
+#               it is, even if it ignores ping). For a connected VPN it also shows the type (L2TP,
+#               IKEv2, app...), the gateway inside the tunnel and how fast it answers, the server's
+#               name, the tunnel MTU, and for split tunnels which networks/domains go through it. Flags
+#               when the VPN itself is adding the delay. Faster, more exact path MTU check. New test
+#               scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -1005,8 +1008,15 @@ misc_checks() {
   fi
   PMTU=""
   if [[ "$INET_METHOD" == "ICMP ping" ]]; then
-    for s in 1472 1452 1400 1372 1300 1200; do
-      /sbin/ping -D -n -s $s -c 1 -t 1 "${INTERNET_TARGETS[1]}" >/dev/null 2>&1 && { PMTU=$(( s + 28 )); break; }
+    # Send one "don't split this" packet of each size at the same time, and the biggest one that makes
+    # it back is the path MTU. (Doing them one by one wastes a second on every size that's too big.)
+    local -a mpids; local sz
+    for sz in 1472 1452 1400 1372 1300 1252 1200; do
+      /sbin/ping -D -n -s $sz -c 1 -t 1 "${INTERNET_TARGETS[1]}" > "$SCRATCH/mtu_$sz.txt" 2>&1 & mpids+=($!)
+    done
+    wait $mpids 2>/dev/null
+    for sz in 1472 1452 1400 1372 1300 1252 1200; do
+      /usr/bin/grep -q "bytes from" "$SCRATCH/mtu_$sz.txt" 2>/dev/null && { PMTU=$(( sz + 28 )); break; }
     done
   fi
   CLOCK_OFF_MS=$(/usr/bin/sntp -t 2 time.apple.com 2>/dev/null | /usr/bin/awk '$1 ~ /^[+-][0-9]/{printf "%.0f", $1*1000; exit}')
@@ -1170,6 +1180,14 @@ VPN_CLIENTS=(   # "name|app path|process name to look for"
   "ExpressVPN|/Applications/ExpressVPN.app|expressvpnd"
   "Mullvad|/Applications/Mullvad VPN.app|mullvad-daemon"
 )
+# When a VPN is on, it adds a route so its own traffic to the server still goes out the normal
+# Wi-Fi/Ethernet. That route gives the server's real address away.
+vpn_server_from_routes() {
+  [[ -n "$GATEWAY" ]] || return 0
+  /usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk -v gw="$GATEWAY" -v ifc="$PHYS_IF" \
+    '$2==gw && $4==ifc && $3 ~ /H/ && $3 ~ /S/ && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $1 !~ /^169\.254\./ {print $1; exit}'
+}
+
 vpn_info() {
   local e n app proc st i a flags
   VPN_APPS=""; VPN_RUNNING=""
@@ -1211,17 +1229,23 @@ vpn_info() {
   # still goes out the normal Wi-Fi/Ethernet. That route gives the server away.
   VPN_GW=""; VPN_GW_MS=""
   if [[ -n "$VPN_TUNNELS" && -n "$GATEWAY" ]]; then
-    VPN_GW=$(/usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk -v gw="$GATEWAY" -v ifc="$PHYS_IF" \
-      '$2==gw && $4==ifc && $3 ~ /H/ && $3 ~ /S/ && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $1 !~ /^169\.254\./ {print $1; exit}')
+    VPN_GW=$(vpn_server_from_routes)
     VPN_GW_NOTE=""
     if [[ -n "$VPN_GW" ]]; then
-      VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+      if [[ -n "$VPN_PING_PID" ]]; then   # pinged back during the ping test
+        wait $VPN_PING_PID 2>/dev/null
+        VPN_GW_MS=$(/usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}' "$SCRATCH/vpn_ping.txt" 2>/dev/null)
+      else
+        VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+      fi
       if [[ -z "$VPN_GW_MS" ]]; then
         # A lot of VPN servers ignore ping. A traceroute toward it still gets us the time to the last
-        # router in front of it, which is close enough to tell how far away the server is.
-        /usr/sbin/traceroute -n -q 2 -w 1 -m 16 "$VPN_GW" > "$SCRATCH/vpn_trace.txt" 2>/dev/null & local tp=$!
-        for (( i=0; i<20; i++ )); do kill -0 $tp 2>/dev/null || break; /bin/sleep 0.5; done
-        kill $tp 2>/dev/null; wait $tp 2>/dev/null
+        # router in front of it, which is close enough to tell how far away the server is. It was
+        # started back during the ping test (it can take ~10 seconds), so just wait for it if needed.
+        if [[ -n "$VPN_TRACE_PID" ]]; then
+          for (( i=0; i<24; i++ )); do kill -0 $VPN_TRACE_PID 2>/dev/null || break; /bin/sleep 0.5; done
+          kill $VPN_TRACE_PID 2>/dev/null; wait $VPN_TRACE_PID 2>/dev/null
+        fi
         local last=$(parse_trace "$SCRATCH/vpn_trace.txt" | /usr/bin/awk -F'\t' '$3 != "-" {h=$2; t=$3} END{ if(h!="") print h, t }')
         if [[ -n "$last" ]]; then
           VPN_GW_MS=$(r0 "${last#* }")
@@ -1230,6 +1254,56 @@ vpn_info() {
       fi
     fi
   fi
+  # More detail on the connected VPN: what kind it is, the gateway on the inside of the tunnel, the
+  # server's name, and for split tunnels, which networks and domains go through it.
+  VPN_TYPE=""; VPN_TGW=""; VPN_TGW_MS=""; VPN_HOST=""; VPN_ROUTES=""; VPN_ROUTE_COUNT=0; VPN_DOMAINS=""
+  local tif="${${VPN_TUNNELS%%,*}%% *}" nc_line kind st
+  if [[ -n "$tif" ]]; then
+    # A VPN set up in the Mac's own settings shows up in scutil, which knows the type and inside gateway
+    nc_line=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '(Connected)' | /usr/bin/head -1)
+    if [[ -n "$nc_line" ]]; then
+      name=$(print -r -- "$nc_line" | /usr/bin/awk -F'"' '{print $2}')
+      kind=$(print -r -- "$nc_line" | /usr/bin/sed -n 's/.*\[\(.*\)\].*/\1/p')
+      case $kind in
+        PPP:L2TP) VPN_TYPE="L2TP over IPsec (built into macOS)";;
+        PPP:PPTP) VPN_TYPE="PPTP (built into macOS)";;
+        IPSec)    VPN_TYPE="IPsec / Cisco IPsec (built into macOS)";;
+        IKEv2)    VPN_TYPE="IKEv2 (built into macOS)";;
+        VPN:*)    VPN_TYPE="App VPN (${kind#VPN:})";;
+        *)        VPN_TYPE="$kind";;
+      esac
+      VPN_TYPE="$name · $VPN_TYPE"
+      st=$(/usr/sbin/scutil --nc status "$name" 2>/dev/null)
+      VPN_TGW=$(print -r -- "$st" | /usr/bin/awk '/DestAddresses/{f=1; next} f && /[0-9]+ : /{print $3; exit}')
+      VPN_DOMAINS=$(print -r -- "$st" | /usr/bin/awk '/SupplementalMatchDomains/{f=1; next} f && /}/{f=0} f && /[0-9]+ : ./{print $3}' | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
+    elif [[ -n "$VPN_RUNNING" ]]; then
+      VPN_TYPE="$VPN_RUNNING (app tunnel)"
+    fi
+    # Point-to-point tunnels also list the far end in ifconfig ("inet A --> B")
+    [[ -z "$VPN_TGW" ]] && VPN_TGW=$(/sbin/ifconfig "$tif" 2>/dev/null | /usr/bin/awk '/inet / && $3=="-->" && $4!=$2 {print $4; exit}')
+    # How long it takes to get through the tunnel to that gateway. If it ignores ping, the first hop
+    # of the traceroute (which goes through the tunnel on a full-tunnel VPN) is the same router.
+    if [[ -n "$VPN_TGW" ]]; then
+      VPN_TGW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_TGW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+      if [[ -z "$VPN_TGW_MS" && -n "${hops[1]}" ]]; then
+        local -a h1=("${(@ps:\t:)hops[1]}")
+        [[ "${h1[2]}" == "$VPN_TGW" ]] && isnum "${h1[3]}" && VPN_TGW_MS=$(r0 "${h1[3]}")
+      fi
+    fi
+    # Split tunnel: which networks are sent into the tunnel (skip the per-host entries macOS adds itself)
+    if (( ! VPN_ACTIVE )); then
+      local -a nets=(${(f)"$(/usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk -v i="$tif" '$4==i && $3 !~ /W/ && $1!="default" && $1 !~ /^(169\.254|224\.|255\.)/ {print $1}' | /usr/bin/awk '!s[$0]++')"})
+      VPN_ROUTE_COUNT=${#nets}
+      (( ${#nets} )) && VPN_ROUTES="${(j:, :)nets[1,6]}$( (( ${#nets} > 6 )) && print " …")"
+    fi
+    # DNS domains sent to the VPN's DNS (from the resolver tied to the tunnel), if scutil didn't say
+    [[ -z "$VPN_DOMAINS" ]] && VPN_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk -v i="($tif)" '/^resolver/{d=""} /^  domain/{d=$3} /if_index/ && index($0,i) && d!="" {print d; d=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -5 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
+  fi
+  # The VPN server's name, if it has one
+  if [[ -n "$VPN_GW" ]]; then
+    VPN_HOST=$(/usr/bin/dig +short +time=1 +tries=1 -x "$VPN_GW" 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/\.$//')
+  fi
+
   # DNS servers the VPN pushed (resolvers tied to a tunnel interface)
   VPN_DNS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/^resolver/{ns=""} /nameserver\[/{ns=ns (ns==""?"":", ") $3} /if_index/ && /(utun|ppp|ipsec)/ && ns!="" {print ns; ns=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -2 | /usr/bin/paste -sd';' -)
 }
@@ -1327,6 +1401,7 @@ simulate_run() {
   MDM_ENROLLED="Yes (User Approved)"; MDM_ADE="Yes"; MDM_VENDOR="Jamf Pro"; MDM_URL=""; JAMF_URL="https://example.jamfcloud.com/"
   MDM_HOST="example.jamfcloud.com"; MDM_REACH=yes; MDM_MS=42; JAMF_HEALTH="healthy"; APNS_5223=35; APNS_443=30; APPLE_ENROLL=yes
   VPN_APPS="GlobalProtect (running)"; VPN_RUNNING="GlobalProtect"; VPN_SERVERS="GlobalProtect portal vpn.example.com"; VPN_TUNNELS=""; VPN_MODE=""; VPN_GW=""; VPN_GW_MS=""; VPN_DNS=""
+  VPN_TYPE=""; VPN_TGW=""; VPN_TGW_MS=""; VPN_HOST=""; VPN_ROUTES=""; VPN_ROUTE_COUNT=0; VPN_DOMAINS=""
 
   # Then break whatever the scenario says to break -----------------------------------
   sim weak-wifi   && { WIFI_RSSI=-78; WIFI_NOISE=-92; WS_MIN=-84; WS_AVG=-78; WS_MAX=-72; WIFI_TX=29; WS_TXMIN=6; WS_TXMAX=58; INET_JIT=38; INET_LAT=44; INET_LAG=52; INET_LOSS=1.5; R_LAT=28; R_JIT=22; R_LAG=31; }
@@ -1337,7 +1412,8 @@ simulate_run() {
   sim slow-dns    && { DNS_CFG_AVG=240; WEB_DNS=260; WEB_TTFB=520; }
   sim bufferbloat && { LOADED_MS=640; }
   sim slow-speed  && { DL_MBPS=6.2; UL_MBPS=0.9; LOADED_MS=310; }
-  sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"; }
+  sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40 (MTU 1400)"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"
+                       VPN_TYPE="GlobalProtect (app tunnel)"; VPN_TGW="10.20.30.1"; VPN_TGW_MS=41; VPN_HOST="gp-east.vpn.example.com"; VPN_DOMAINS="corp.example.com"; }
   sim vpn         && { VPN_ACTIVE=1; VPN_NAME="Corporate VPN (simulated)"; PMTU=1400; INET_LAT=$(( INET_LAT + 30 )); INET_LAG=$(( INET_LAG + 30 )); VPN_CONFIGS="Corporate VPN (Connected)"; NE_LIST="Example VPN Extension"; }
   sim broken-ipv6 && { IPV6_ADDR="2001:db8::50"; IPV6_NET="broken"; }
   sim router-bottleneck && { R_LAT=118; R_JIT=45; R_LAG=140; R_LOSS=4; INET_LAT=150; INET_LAG=170; INET_JIT=48; }
@@ -1448,7 +1524,7 @@ write_json() {
     print -r -- "  \"history_24h\": {\"drops_while_awake\": $(jnum "$HIST_DROPS"), \"last_drop\": $(isnum "$HIST_LAST" && jstr "$(strftime '%Y-%m-%dT%H:%M:%S' $HIST_LAST)" || print -n null), \"longest_s\": $(jnum "$HIST_LONGEST")},"
     print -r -- "  \"top_app\": {\"name\": $(jstr "$APP_TOP"), \"mbps\": $(jnum "$APP_TOP_MBPS")},"
     print -r -- "  \"management\": {\"mdm\": $(jstr "$MDM_ENROLLED"), \"ade\": $(jstr "$MDM_ADE"), \"vendor\": $(jstr "$MDM_VENDOR"), \"server\": $(jstr "$MDM_HOST"), \"server_reachable\": $(jstr "$MDM_REACH"), \"apns_5223_ms\": $(jnum "$APNS_5223"), \"apns_443_ms\": $(jnum "$APNS_443")},"
-    print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_ms\": $(jnum "$VPN_GW_MS")},"
+    print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_name\": $(jstr "$VPN_HOST"), \"server_ms\": $(jnum "$VPN_GW_MS"), \"type\": $(jstr "$VPN_TYPE"), \"tunnel_gateway\": $(jstr "$VPN_TGW"), \"tunnel_gateway_ms\": $(jnum "$VPN_TGW_MS"), \"split_routes\": $(jnum "$VPN_ROUTE_COUNT"), \"dns_domains\": $(jstr "$VPN_DOMAINS")},"
     print -r -- "  \"checks\": {\"captive_portal\": $(jstr "$CAPTIVE"), \"ipv6\": $(jstr "${IPV6_NET:-not configured}"), \"path_mtu\": $(jnum "$PMTU"), \"clock_offset_ms\": $(jnum "$CLOCK_OFF_MS"), \"proxy\": $(jstr "$PROXY_DESC")},"
     print -rn -- "  \"timings_s\": {"; first=1
     for t in $TIMINGS; do (( first )) || print -rn -- ", "; first=0; print -rn -- "$(jstr "${t% *}"): ${t#* }"; done
@@ -1523,6 +1599,12 @@ run_tests() {
   done
   [[ -n "$GATEWAY" ]] && { ping_run "$GATEWAY" "$router_file" "$PHYS_IF" & ping_pids+=($!); }
   /usr/sbin/traceroute -n -q 3 -w 1 -m 12 "${INTERNET_TARGETS[1]}" > "$trace_file" 2>/dev/null & local trace_pid=$!
+  VPN_TRACE_PID=""; VPN_PING_PID=""
+  if (( VPN_ACTIVE )); then   # trace toward the VPN server now, since it can take a while (see vpn_info)
+    local vs=$(vpn_server_from_routes)
+    [[ -n "$vs" ]] && { /usr/sbin/traceroute -n -q 1 -w 1 -m 16 "$vs" > "$SCRATCH/vpn_trace.txt" 2>/dev/null & VPN_TRACE_PID=$!
+                        /sbin/ping -n -c 5 -i 0.5 -t 5 "$vs" > "$SCRATCH/vpn_ping.txt" 2>/dev/null & VPN_PING_PID=$!; }
+  fi
   history_collect & local hist_pid=$!     # last 24h of connection drops (reads the Mac's logs)
   apps_collect & local apps_pid=$!        # which apps are using the network right now
   local wifi_pid=""; [[ "$CONN_TYPE" == "Wi-Fi" ]] && { wifi_sampler "$(( TEST_SECONDS > 2 ? TEST_SECONDS - 1 : 1 ))" "$wifi_file" & wifi_pid=$!; }
@@ -1805,6 +1887,9 @@ run_tests() {
   if [[ -z "$APNS_5223" && -z "$APNS_443" ]] && (( ! NO_INTERNET )); then
     finding bad "Can't reach Apple's push service. MDM commands, notifications, FaceTime and iMessage may not arrive."
   fi
+  if isnum "$VPN_TGW_MS" && isnum "$VPN_GW_MS" && (( VPN_TGW_MS > VPN_GW_MS * 3 / 2 + 30 )); then
+    finding ok "The VPN itself is adding delay: $VPN_GW_MS ms to reach the VPN server, but $VPN_TGW_MS ms through the tunnel. The VPN server may be overloaded."
+  fi
   isnum "$VPN_GW_MS" && (( VPN_GW_MS > 100 )) && finding ok "The VPN server is slow to reach ($VPN_GW_MS ms), and everything goes through it."
   (( ierr + oerr > 0 )) && finding ok "$(( ierr + oerr )) network interface errors during the test."
   [[ -n "$retx_pct" ]] && (( retx_pct >= 2 )) && finding ok "TCP retransmits at ${retx_pct}% — packets are being lost and resent."
@@ -1940,10 +2025,14 @@ run_tests() {
   section "VPN" "lock.shield"
   row "VPN apps" "${VPN_APPS:-None found}" na
   row "Mac VPN connections" "${VPN_CONFIGS:-None set up}" "$([[ $VPN_CONFIGS == *"(Connected)"* ]] && print ok || print na)"
+  [[ -n "$VPN_TYPE" ]] && row "Connected VPN" "$VPN_TYPE" na
   row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" "$([[ -n $VPN_TUNNELS ]] && print ok || print na)"
-  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · doesn't answer ping or traceroute")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_TGW" ]] && row "Tunnel gateway (inside the VPN)" "$VPN_TGW$(isnum "$VPN_TGW_MS" && print " · $VPN_TGW_MS ms" || print " · doesn't answer")" "$(isnum "$VPN_TGW_MS" && { (( VPN_TGW_MS > 150 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · doesn't answer ping or traceroute")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
   [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
+  [[ -n "$VPN_DOMAINS" ]] && row "Domains sent to the VPN's DNS" "$VPN_DOMAINS" na
+  (( VPN_ROUTE_COUNT )) && row "Networks sent through the VPN" "$VPN_ROUTES ($VPN_ROUTE_COUNT total)" na
 
   if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
     section "Wi-Fi Details" "antenna.radiowaves.left.and.right"

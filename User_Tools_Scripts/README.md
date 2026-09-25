@@ -104,7 +104,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
   - **Other apps**: which apps were using the network during the test (iCloud, OneDrive, backups, updates...).
 - **For IT section**:
   - **Device management**: MDM enrollment and vendor (Jamf, Intune, Kandji, Mosyle, Workspace ONE...), whether the MDM server is reachable, the Jamf health check, and Apple Push (ports 5223 and 443).
-  - **VPN**: VPN apps installed or running, whether a tunnel is up (full or split), the VPN server and its response time, configured VPN servers, and DNS from the VPN. Nothing to configure; it reads what's on the Mac.
+  - **VPN**: VPN apps installed or running, which VPN is connected and its type (L2TP, IKEv2, app tunnel...), whether a tunnel is up (full or split) and its MTU, the gateway inside the tunnel and its response time, the VPN server's address, name and response time, configured VPN servers, DNS from the VPN, and for split tunnels which networks and domains go through it. Flags when the VPN itself is adding the delay. Nothing to configure; it reads what's on the Mac.
   - **Network path**: a traceroute that flags where latency jumps.
   - **Network configuration**: DHCP, subnet, MAC, MTU, IPv6, proxy/PAC, network extensions, and VPN configurations.
   - **Health checks**: captive portal, path MTU, clock offset, and interface errors. TCP retransmits too, when run as root.
