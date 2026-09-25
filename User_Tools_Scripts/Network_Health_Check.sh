@@ -429,20 +429,22 @@ function tweenStep(dt){ if(!TW.tpl) return; var k=1-Math.exp(-dt/0.28);   // gli
 var LV={on:false, hist:[], cols:[], last:0, base0:false}, WIN=12;   // seconds of history across the graph
 var SC={mn:0,mx:1,init:false};                                      // graph scale (eases when the range changes)
 function liveSample(t){ var v=[]; for(var i=0;i<TW.cur.length;i++) if(TW.cur[i]!=null) v.push(TW.cur[i]);
- if(!v.length) return; if(t-LV.last>=0.1){ LV.hist.push({t:t,v:v}); LV.last=t; }
+ if(!v.length) return; if(t-LV.last>=0.1){ LV.hist.push({t:t,v:v,miss:!!TW.override}); LV.last=t; }   // miss = "no reply" moment
  while(LV.hist.length && LV.hist[0].t < t-WIN-1) LV.hist.shift(); }
 function drawLive(t,dt){
  var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH)), H=LV.hist; if(H.length<2) return img;
  var head=[]; for(var i=0;i<TW.cur.length;i++) if(TW.cur[i]!=null) head.push(TW.cur[i]);
- var lo=1e9, hi=-1e9; H.forEach(function(h){ h.v.forEach(function(x){ if(x<lo)lo=x; if(x>hi)hi=x; }); });
+ var lo=1e9, hi=-1e9; H.forEach(function(h){ if(!h.miss) h.v.forEach(function(x){ if(x<lo)lo=x; if(x>hi)hi=x; }); });   // dips don't count toward the scale
+ if(lo>hi){ lo=0; hi=1; }
  var tmn=LV.base0?0:lo*0.8, tmx=Math.max(hi*1.1, tmn+1);
  if(!SC.init){ SC.mn=tmn; SC.mx=tmx; SC.init=true; } else { var k=1-Math.exp(-dt/0.5); SC.mn+=(tmn-SC.mn)*k; SC.mx+=(tmx-SC.mx)*k; }
  var R=SPW-6, span=SPW-12;
  function Y(x){ return 5+Math.max(0,Math.min(1,(x-SC.mn)/(SC.mx-SC.mn)))*(SPH-12); }
  img.lockFocus;
  for(var s=0;s<head.length;s++){ var col=LV.cols[s]||CYAN, P=[];
-  H.forEach(function(h){ if(h.v[s]!=null) P.push([R-(t-h.t)/WIN*span, Y(h.v[s])]); });
-  P.push([R, Y(head[s])]);
+  // a "no reply" moment drops to the bottom of the graph, like a missed beat
+  H.forEach(function(h){ if(h.v[s]!=null) P.push([R-(t-h.t)/WIN*span, h.miss ? 3 : Y(h.v[s])]); });
+  var hy=TW.override ? 3 : Y(head[s]); P.push([R, hy]);
   if(P.length<2) continue;
   var area=$.NSBezierPath.bezierPath; area.moveToPoint($.NSMakePoint(P[0][0],0));
   P.forEach(function(p){ area.lineToPoint($.NSMakePoint(p[0],p[1])); }); area.lineToPoint($.NSMakePoint(R,0)); area.closePath;
@@ -450,7 +452,7 @@ function drawLive(t,dt){
   var ln=$.NSBezierPath.bezierPath; ln.moveToPoint($.NSMakePoint(P[0][0],P[0][1]));
   for(var i=1;i<P.length;i++) ln.lineToPoint($.NSMakePoint(P[i][0],P[i][1]));
   ln.lineWidth=2; ln.lineCapStyle=1; ln.lineJoinStyle=1; col.setStroke; ln.stroke;
-  col.setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(R-3.5,Y(head[s])-3.5,7,7)).fill; }
+  (TW.override ? CODES.o : col).setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(R-3.5,hy-3.5,7,7)).fill; }
  img.unlockFocus; return img; }
 
 // One-off results can come with a small graph of their own (like each site's load time) - drawn as-is.
