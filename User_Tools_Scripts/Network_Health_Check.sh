@@ -79,17 +79,20 @@
 #               findings, "For IT" details, live progress window with a Cancel button, results window
 #               with Save Report / Run Again, verbose/silent/quick modes, simulated scenarios for
 #               testing, step timings, and optional JSON results. - @cocopuff2u
-# 1.1 9/24/26 - Testing + fixes (in progress) - Accuracy fixes: traceroute hops use every reply,
-#               your own DNS servers are labeled right, shows the private Wi-Fi MAC and the hardware
-#               MAC, VPN status reads right, accurate nearby access point count, Wi-Fi readings don't
-#               get cut off, a failed website gets one retry, and packet loss that only one server
-#               shows (usually that server limiting ping) no longer counts against the connection.
-#               New: connection drops from the last 24 hours (skips the ones caused by sleep), which
-#               apps are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks it
-#               can reach the MDM server and Apple Push, and full VPN details for built-in VPNs and VPN
-#               apps (type, tunnel, full vs split, gateway, server, DNS) - tested live with an L2TP VPN
-#               and ProtonVPN/WireGuard. Clearer labels, a legend in the report, and a faster path MTU
-#               check. New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
+# 1.1 9/24/26 - Accuracy + troubleshooting update
+#               Accuracy: packet loss only counts when every server sees it, and is checked against
+#               TCP resends so pings dropped along the way (common on VPNs) aren't scored as real loss;
+#               one lost ping is treated as noise; the loss finding says where it's happening (Wi-Fi,
+#               VPN, or past your network); traceroute hops use every reply and the middle value; lag
+#               and latency come from the same servers; your own DNS servers labeled right; private
+#               Wi-Fi MAC and hardware MAC both shown; a failed website gets one retry.
+#               New: connection drops from the last 24 hours (skips sleep), apps using the network,
+#               MDM detection (Jamf, Intune, Kandji, etc.) with MDM server + Apple Push checks, and full
+#               VPN details for built-in VPNs and VPN apps (type, tunnel, full vs split, gateway,
+#               server, DNS), tested live with L2TP and ProtonVPN/WireGuard.
+#               Look and feel: smoother live readout (gliding numbers, scrolling graph, "no reply"
+#               dips), no progress bar flicker, clearer report labels with a legend, and a cleaner
+#               console log with the important details from every step. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -248,6 +251,8 @@ logMe() { local l="$(/bin/date '+%H:%M:%S')  ${(r:6:)1}  ${2}"; print -r -- "$l"
 logLine() { print -r -- "$1"; logWritable && print -r -- "$1" >> "$logFile"; return 0; }   # a plain line, no time/level
 # the step log: name padded so the details line up, plus how long it took
 logStep() { logMe STEP "${(r:16:)1}$2${3:+   ($3)}"; }
+# an indented detail line under a step:   "                  Wi-Fi         IHGWiFi.com · -61 dBm · ..."
+logDetail() { [[ -n "$2" ]] && logLine "                  ${(r:14:)1}$2"; return 0; }
 last_timing() { print -r -- "${${TIMINGS[-1]}#* }s"; }
 as_esc() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; print -r -- "${s//$'\n'/\\n}"; }   # makes text safe to drop into the JavaScript
 clean() { local s="${1//$'\t'/ }"; print -r -- "${s//$'\n'/ }"; }                        # strips tabs/newlines so they don't break the results file
@@ -1692,6 +1697,12 @@ run_tests() {
   fi
   check_cancel; mark connect
   logStep "Connection" "$CONN_TYPE ($PHYS_IF) · IP $LOCAL_IP · router ${GATEWAY:-none} · VPN $( (( VPN_ACTIVE )) && print -r -- "$VPN_NAME" || print off)${PUB_IP:+ · public IP $PUB_IP}" "$(last_timing)"
+  if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
+    logDetail "Wi-Fi" "${WIFI_SSID} · signal ${WIFI_RSSI:-?} dBm$(isnum "$WIFI_NOISE" && isnum "$WIFI_RSSI" && print " (SNR $(( WIFI_RSSI - WIFI_NOISE )) dB)") · ${WIFI_BAND:-?} GHz ch ${WIFI_CH:-?} (${WIFI_WIDTH:-?} MHz) · ${WIFI_PHY:-?} · link ${WIFI_TX:-?} Mbps · security ${WIFI_SEC:-?}"
+  else
+    logDetail "Ethernet" "${IF_MEDIA:-link speed unknown}"
+  fi
+  logDetail "Provider" "${PUB_ISP:-unknown}${PUB_LOC:+ · $PUB_LOC}$( (( VPN_ACTIVE )) && print " (the VPN's)")"
 
   # 2. Responsiveness: start the pings, plus traceroute and Wi-Fi readings in the background --------
   local router_file="$SCRATCH/ping_router.txt" trace_file="$SCRATCH/trace.txt" wifi_file="$SCRATCH/wifi_samples.txt"
@@ -1838,6 +1849,9 @@ run_tests() {
   check_cancel; mark responsiveness
   if (( NO_INTERNET )); then logStep "Responsiveness" "no internet - nothing answered" "$(last_timing)"
   else logStep "Responsiveness" "lag $(ms $INET_LAG) · jitter $(ms $INET_JIT) · loss ${INET_LOSS}% · router $( (( ROUTER_OK )) && ms $R_LAT || print n/a) · $INET_METHOD" "$(last_timing)"; fi
+  local _t; for _t in $tgt_rows; do local -a _p=("${(@ps:\t:)_t}"); logDetail "  ${_p[1]}" "${_p[2]}"; done
+  logDetail "Reliability" "${REL_PCT}% responsive · $( (( OUTAGE_EVENTS )) && print "$OUTAGE_EVENTS drop-out(s), longest ${OUTAGE_LONGEST_S}s" || print "no drop-outs")$(isnum "$HIST_DROPS" && { (( HIST_DROPS )) && print " · $HIST_DROPS drop(s) in the last 24h while awake" || print " · no drops in the last 24h"; })"
+  (( ${#APP_ROWS} )) && logDetail "Other apps" "$(for _t in ${APP_ROWS[1,3]}; do print -n "${_t%%$'\t'*} $(rate_text ${_t##*$'\t'})  "; done)"
 
   # 3. Websites, DNS, and the other quick checks -----------------------------------------
   local code dns conn tls ttfb hv rip try; local -a failed_sites
@@ -1871,6 +1885,13 @@ run_tests() {
   mgmt_info; vpn_info
   check_cancel; mark web_dns
   logStep "Web & DNS" "$(( n_web )) of ${#WEB_TARGETS} sites loaded$( (( web_fail )) && print " (failed: ${(j:, :)failed_sites})") · first byte $(ms $WEB_TTFB) · your DNS ${DNS_CFG_AVG:-?} ms" "$(last_timing)"
+  logDetail "DNS" "your DNS ${DNS_CFG_AVG:-?} ms vs public ${DNS_PUB_BEST:-?} ms · captive portal ${CAPTIVE:-?} · path MTU ${PMTU:-?} · clock off ${CLOCK_OFF_MS:-?} ms"
+  logDetail "Management" "MDM: ${MDM_ENROLLED:-unknown}${MDM_VENDOR:+ · $MDM_VENDOR}${MDM_HOST:+ · server $([[ $MDM_REACH == yes ]] && print "reachable ($(ms $MDM_MS))" || print "NOT reachable") $MDM_HOST}$([[ -n $JAMF_HEALTH ]] && print " · Jamf health $JAMF_HEALTH") · Apple Push $(isnum "$APNS_5223" && print "ok" || { isnum "$APNS_443" && print "443 only" || print "BLOCKED"; })"
+  if [[ -n "$VPN_TUNNELS" ]]; then
+    logDetail "VPN" "${VPN_TYPE:-${VPN_RUNNING:-unknown}} · ${VPN_TUNNELS} · ${VPN_MODE%% (*}${VPN_GW:+ · server $VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " ~$VPN_GW_MS ms")}${VPN_TGW:+ · tunnel gateway $VPN_TGW$(isnum "$VPN_TGW_MS" && print " $VPN_TGW_MS ms")}"
+  elif [[ -n "$VPN_APPS" ]]; then
+    logDetail "VPN" "no tunnel up · installed: $VPN_APPS"
+  fi
 
   # 4. Speed ------------------------------------------------------------------------
   local engine="$SPEED_ENGINE"; (( NO_INTERNET )) && engine="off"
@@ -2337,10 +2358,13 @@ while true; do
   write_json
   # Result block: the score, then every finding (problems first)
   logMe RESULT "Score $NET_SCORE/100 ($(band_label $NET_SCORE)) - $HEADLINE · responsiveness $RESP_SCORE · reliability $REL_SCORE · speed ${SPEED_SCORE:-skipped}"
+  logDetail "Video calls" "$VIDEO_TEXT"
+  (( ! NO_INTERNET )) && logDetail "Key numbers" "lag $(ms $INET_LAG) · jitter $(ms $INET_JIT) · loss ${INET_LOSS}%$( (( PING_ONLY_LOSS )) && print " (pings only)")$(isnum "$DL_MBPS" && print " · ↓ $(r0 $DL_MBPS) / ↑ $(r0 ${UL_MBPS:-0}) Mbps")${BLOAT_GRADE:+ · bufferbloat $BLOAT_GRADE}"
+  logLine "                  Findings:"
   for _k in bad ok na good; do
     while IFS=$'\t' read -r _tag _txt; do [[ "$_tag" == "$_k" ]] || continue
       case $_tag in bad) _tag="FAIL";; ok) _tag="WARN";; good) _tag="OK  ";; *) _tag="INFO";; esac
-      logLine "                  $_tag  $_txt"
+      logLine "                    $_tag  $_txt"
     done < "$FIND_FILE"
   done
   logMe INFO "Step timings: ${TIMINGS_TEXT:-n/a}"
