@@ -96,7 +96,8 @@
 #               console log with the important details from every step. - @cocopuff2u
 # 1.2 9/25/26 - No more getting stuck on "Testing websites & DNS": every check has a time limit and
 #               Cancel works right away; DNS and MDM checks run at the same time so they're quick;
-#               the progress window says what it's checking. IPv6 hidden by default. - @cocopuff2u
+#               the progress window says what it's checking. Fixed a hang on Macs without Cisco VPN
+#               profiles. IPv6 hidden by default. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -191,6 +192,7 @@ cancelButton="Cancel"                      # button on the progress window that 
 emulate -L zsh
 setopt no_nomatch null_glob extended_glob typeset_silent   # typeset_silent: re-declaring a local never prints it
 zmodload zsh/datetime   # EPOCHREALTIME / EPOCHSECONDS
+exec < /dev/null        # nothing here reads input, so a command can never sit waiting on it (Jamf/Terminal leave it open)
 
 # A temp folder for this run (ping output, results, the window scripts). It gets deleted at the end.
 SCRATCH="/tmp/network-health-check.$$"
@@ -1341,7 +1343,9 @@ vpn_info() {
   VPN_SERVERS=""
   a=$(/usr/bin/plutil -extract "Palo Alto Networks.GlobalProtect.PanSetup.Portal" raw /Library/Preferences/com.paloaltonetworks.GlobalProtect.settings.plist 2>/dev/null)
   [[ -n "$a" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }GlobalProtect portal $a"
-  a=$(/usr/bin/grep -hoE '<HostAddress>[^<]+' /opt/cisco/secureclient/vpn/profile/*.xml /opt/cisco/anyconnect/profile/*.xml 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/<HostAddress>//')
+  local -a cprof=(/opt/cisco/secureclient/vpn/profile/*.xml /opt/cisco/anyconnect/profile/*.xml)
+  # only if there are profiles - grep with no files would sit there waiting for input
+  a=""; (( ${#cprof} )) && a=$(/usr/bin/grep -hoE '<HostAddress>[^<]+' $cprof 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/<HostAddress>//')
   if [[ -n "$a" ]]; then
     [[ -e "/Applications/Cisco" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }Cisco $a" || VPN_SERVERS+="${VPN_SERVERS:+; }Cisco $a (old profile, app not installed)"
   fi
