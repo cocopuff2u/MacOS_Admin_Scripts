@@ -861,7 +861,8 @@ net_config() {
   DHCP_DOMAIN=$(/usr/sbin/ipconfig getoption "$PHYS_IF" domain_name 2>/dev/null)
   SEARCH_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/search domain/{print $4}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   out=$(/sbin/ifconfig "$PHYS_IF" 2>/dev/null)
-  IF_MAC=$(print -r -- "$out" | /usr/bin/awk '/ether /{print $2; exit}')
+  IF_MAC=$(print -r -- "$out" | /usr/bin/awk '/ether /{print $2; exit}')          # address in use on this network
+  HW_MAC=$(/usr/sbin/networksetup -getmacaddress "$PHYS_IF" 2>/dev/null | /usr/bin/awk '{print $3}')   # burned-in hardware address
   IF_MTU=$(print -r -- "$out" | /usr/bin/awk '/mtu /{print $NF; exit}')
   IF_MEDIA=$(print -r -- "$out" | /usr/bin/awk -F'media: ' '/media:/{print $2; exit}')
   IPV6_ADDR=$(print -r -- "$out" | /usr/bin/awk '/inet6 / && !/fe80/ && !/deprecated/{print $2; exit}')
@@ -887,7 +888,7 @@ net_config() {
   # Network extensions (VPN clients, content filters, security agents) + configured VPNs
   NE_LIST=$(/usr/bin/systemextensionsctl list 2>/dev/null | /usr/bin/sed -n '/network_extension/,/^---/p' \
             | /usr/bin/awk -F'\t' '/activated enabled/{print $5}' | /usr/bin/awk '!s[$0]++' | /usr/bin/paste -sd';' - | /usr/bin/sed 's/;/; /g')
-  VPN_CONFIGS=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/awk -F'"' 'NF>2{ st=$1; sub(/.*\(/,"",st); sub(/\).*/,"",st); print $2 " (" st ")" }' | /usr/bin/paste -sd';' - | /usr/bin/sed 's/;/; /g')
+  VPN_CONFIGS=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/awk -F'"' 'NF>2{ st=""; if(match($1,/\([A-Za-z ]+\)/)) st=substr($1,RSTART+1,RLENGTH-2); print $2 (st==""?"":" (" st ")") }' | /usr/bin/paste -sd';' - | /usr/bin/sed 's/;/; /g')
 }
 
 # Which Cloudflare edge city this Mac lands on (a far-away edge = odd routing / VPN egress).
@@ -916,14 +917,17 @@ wifi_neighbors() {
   local out=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var s=$.CWWiFiClient.sharedWiFiClient.interface.cachedScanResults;
     var a=s?s.allObjects:null, o=[]; if(a){ for(var k=0;k<a.count;k++){ var x=a.objectAtIndex(k); o.push(x.wlanChannel.channelNumber+":"+x.rssiValue);} } o.join(" ")' 2>/dev/null)
   read -r WIFI_NEARBY WIFI_COCHAN WIFI_COCHAN_STRONG <<< "$(print -r -- "$out" | /usr/bin/tr ' ' '\n' | /usr/bin/awk -F: -v ch="$WIFI_CH" '
-    NF==2 && !seen[$0]++ { n++; if($1==ch){ c++; if($2>-75) s++ } } END{ print n+0, c+0, s+0 }')"
+    NF==2 { n++; if($1==ch){ c++; if($2>-75) s++ } } END{ print n+0, c+0, s+0 }')"
 }
 
 # Path trace: hop list "n<tab>ip<tab>avg-ms<tab>lost-of-3". Private/CGNAT ranges flag the LAN side.
+# A hop that answers from several addresses prints its extra replies on indented continuation lines —
+# those are folded into the same hop so the average covers all 3 probes.
 parse_trace() {
-  /usr/bin/awk '/^ *[0-9]+ /{ n=$1; ip=""; s=0; c=0; l=0
-    for(i=2;i<=NF;i++){ if($i=="*") l++; else if($(i+1)=="ms" && $i ~ /^[0-9.]+$/){s+=$i;c++} else if(ip=="" && $i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) ip=$i }
-    printf "%s\t%s\t%s\t%d\n", n, (ip==""?"*":ip), (c?sprintf("%.1f",s/c):"-"), l }' "$1" 2>/dev/null
+  /usr/bin/awk 'function flush(){ if(n!="") printf "%s\t%s\t%s\t%d\n", n, (ip==""?"*":ip), (c?sprintf("%.1f",s/c):"-"), l }
+    { start=($0 ~ /^ *[0-9]+ /); if(start){ flush(); n=$1; ip=""; s=0; c=0; l=0; f=2 } else if(n!="") f=1; else next
+      for(i=f;i<=NF;i++){ if($i=="*") l++; else if($(i+1)=="ms" && $i ~ /^[0-9.]+$/){s+=$i;c++} else if(ip=="" && $i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) ip=$i } }
+    END{ flush() }' "$1" 2>/dev/null
 }
 is_private_ip() { [[ "$1" == (10.*|192.168.*|172.(1[6-9]|2[0-9]|3[01]).*|100.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]).*|169.254.*) ]]; }
 
@@ -938,7 +942,7 @@ router_trace() {   # <outfile in ping format>
 
 # DNS: time each configured resolver against public ones. Rows go to DNS_ROWS.
 dns_tests() {
-  local r d q lbl sum n fails; local -a rs=(${(s:, :)DNS_SERVERS} 1.1.1.1 8.8.8.8); rs=(${(u)rs})
+  local r d q lbl sum n fails; local -a cfg=(${(s:, :)DNS_SERVERS}); local -a rs=($cfg 1.1.1.1 8.8.8.8); rs=(${(u)rs})
   DNS_ROWS=(); DNS_CFG_AVG=""; DNS_PUB_BEST=""
   [[ -x /usr/bin/dig ]] || return 0
   for r in $rs; do
@@ -948,7 +952,9 @@ dns_tests() {
       q=$(/usr/bin/dig +tries=1 +time=2 @"$r" "$d" A 2>/dev/null | /usr/bin/awk '/Query time/{print $4}')
       if isnum "$q"; then sum=$(( sum + q )); (( n++ )); else (( fails++ )); fi
     done
-    case $r in 1.1.1.1) lbl="Cloudflare 1.1.1.1";; 8.8.8.8) lbl="Google 8.8.8.8";; *) lbl="Your DNS $r";; esac
+    if (( ${cfg[(Ie)$r]} )); then lbl="Your DNS $r"
+      case $r in 1.1.1.1|1.0.0.1) lbl+=" (Cloudflare)";; 8.8.8.8|8.8.4.4) lbl+=" (Google)";; esac
+    else case $r in 1.1.1.1) lbl="Public: Cloudflare 1.1.1.1";; *) lbl="Public: Google $r";; esac; fi
     if (( n )); then
       local avg=$(( sum / n )) s=good; (( avg > 60 )) && s=ok; (( avg > 150 || fails )) && s=bad
       DNS_ROWS+=("$lbl"$'\t'"$avg ms avg$( (( fails )) && print " · $fails failed")"$'\t'"$s")
@@ -1503,7 +1509,7 @@ run_tests() {
     isnum "$WS_MIN" && (( WS_MIN < -75 && WIFI_RSSI >= -70 )) && finding ok "Wi-Fi signal dipped to $WS_MIN dBm during the test."
     [[ "$WS_CHANS" == */* ]] && finding ok "Wi-Fi switched channels during the test ($WS_CHANS) — roaming between access points or bands."
     [[ "$WIFI_BAND" == "2.4" ]] && finding ok "Connected on 2.4 GHz — slower and more crowded than 5/6 GHz."
-    isnum "$WIFI_COCHAN_STRONG" && (( WIFI_COCHAN_STRONG >= 4 )) && finding ok "$WIFI_COCHAN_STRONG other strong networks share Wi-Fi channel $WIFI_CH — interference likely."
+    isnum "$WIFI_COCHAN_STRONG" && (( WIFI_COCHAN_STRONG >= 4 )) && finding ok "$WIFI_COCHAN_STRONG other strong access points share Wi-Fi channel $WIFI_CH — interference likely."
     isnum "${WIFI_CCA%%[^0-9]*}" && (( ${WIFI_CCA%%[^0-9]*} >= 50 )) && finding ok "Wi-Fi channel is busy ${WIFI_CCA} of the time — congestion."
   fi
   (( ierr + oerr > 0 )) && finding ok "$(( ierr + oerr )) network interface errors during the test."
@@ -1602,7 +1608,12 @@ run_tests() {
   row "DHCP server" "${DHCP_SERVER:-— (manual or none)}${DHCP_LEASE:+ · lease $(( DHCP_LEASE / 3600 ))h}" na
   row "DNS servers" "${DNS_SERVERS:-—}" na
   [[ -n "$SEARCH_DOMAINS$DHCP_DOMAIN" ]] && row "Search domains" "${SEARCH_DOMAINS:-$DHCP_DOMAIN}" na
-  row "MAC address" "${IF_MAC:-—}" na
+  if [[ -n "$HW_MAC" && -n "$IF_MAC" && "${HW_MAC:l}" != "${IF_MAC:l}" ]]; then
+    row "MAC address (in use)" "$IF_MAC — private Wi-Fi address" na
+    row "MAC address (hardware)" "$HW_MAC" na
+  else
+    row "MAC address" "${IF_MAC:-${HW_MAC:-—}}" na
+  fi
   row "Interface MTU" "${IF_MTU:-—}" na
   [[ -n "$IF_MEDIA" && "$CONN_TYPE" == Ethernet ]] && row "Ethernet link" "$IF_MEDIA" "$([[ $IF_MEDIA == *(10baseT|100baseTX|half-duplex)* ]] && print bad || print good)"
   row "IPv6" "${IPV6_ADDR:+$IPV6_ADDR · }${IPV6_NET:-not configured}" "$([[ $IPV6_NET == broken ]] && print bad || { [[ $IPV6_NET == working* ]] && print good || print na; })"
@@ -1618,7 +1629,7 @@ run_tests() {
     [[ -n "$WIFI_BSSID" ]] && row "Access point (BSSID)" "$WIFI_BSSID" na
     [[ -n "$WIFI_MCS" ]] && row "MCS / spatial streams" "MCS $WIFI_MCS${WIFI_NSS:+ · $WIFI_NSS streams}" na
     [[ -n "$WIFI_CCA" ]] && row "Channel utilization (CCA)" "$WIFI_CCA" "$( (( ${WIFI_CCA%%[^0-9]*:-0} >= 50 )) && print ok || print na)"
-    isnum "$WIFI_NEARBY" && row "Nearby networks (last scan)" "$WIFI_NEARBY seen · $WIFI_COCHAN on channel $WIFI_CH ($WIFI_COCHAN_STRONG strong)" "$( (( WIFI_COCHAN_STRONG >= 4 )) && print ok || print na)"
+    isnum "$WIFI_NEARBY" && row "Nearby access points (last scan)" "$WIFI_NEARBY radios seen · $WIFI_COCHAN on channel $WIFI_CH ($WIFI_COCHAN_STRONG strong)" "$( (( WIFI_COCHAN_STRONG >= 4 )) && print ok || print na)"
     [[ -n "$WS_CHANS" ]] && row "Channel(s) during test" "$WS_CHANS" "$([[ $WS_CHANS == */* ]] && print ok || print na)"
   fi
 
