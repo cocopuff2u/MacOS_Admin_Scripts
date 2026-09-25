@@ -410,7 +410,39 @@ function setBig(m){ var txt="", parts=[];
  as.addAttributeValueRange($.NSFontAttributeName,BIGF,all); as.addAttributeValueRange($.NSParagraphStyleAttributeName,PS,all);
  parts.forEach(function(p){ if(p[1]) as.addAttributeValueRange($.NSForegroundColorAttributeName,p[2],$.NSMakeRange(p[0],p[1])); });
  big.attributedStringValue=as; }
-function showMetric(bigTxt,capTxt,a,b){ setBig(bigTxt); cap.setStringValue(capTxt||""); spark.setImage(drawSpark(nums(a),nums(b))); }
+// Smooth live numbers: instead of jumping straight to each new reading, the number counts toward it
+// over a few frames. Only live readings do this; one-off results just appear.
+var TW={tpl:null,key:"",cur:[],tgt:[],shown:""};
+function splitNums(m){ var tpl=[], vals=[];
+ (m||"").split("|").forEach(function(sg){ var mm=sg.match(/-?\d+(\.\d+)?/);
+  if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#")); } else { vals.push(null); tpl.push(sg); } });
+ return {tpl:tpl, vals:vals, key:tpl.map(function(t){return t.replace(/^[a-z]:/,"");}).join("|")}; }
+function renderTween(){ var out=TW.tpl.map(function(t,i){ return TW.cur[i]==null ? t : t.replace("#",String(Math.round(TW.cur[i]))); }).join("|");
+ if(out!=TW.shown){ TW.shown=out; setBig(out); } }
+function tweenStep(){ if(!TW.tpl) return; var moving=false;
+ for(var i=0;i<TW.cur.length;i++){ if(TW.cur[i]==null||TW.tgt[i]==null) continue; var d=TW.tgt[i]-TW.cur[i];
+  if(Math.abs(d)>0.4){ TW.cur[i]+=d*0.2; moving=true; } else TW.cur[i]=TW.tgt[i]; }
+ renderTween(); return moving; }
+
+// Smooth graph: new points slide in from the right, the line is drawn as a curve, and the scale eases
+// when the range changes, instead of the whole thing snapping every update.
+var CH={a:[],b:[],pa:[],pb:[],t0:0,dur:0.45,mn:0,mx:1,tmn:0,tmx:1,anim:false};
+function chartTargets(a,b){ var all=a.concat(b); if(all.length<2) return;
+ var mx=Math.max.apply(null,all), mn=b.length?0:Math.min.apply(null,all)*0.8; if(mx-mn<1) mx=mn+1; CH.tmn=mn; CH.tmx=mx*1.08; }
+function setChart(a,b,animate){ CH.pa=CH.a; CH.pb=CH.b; CH.a=a; CH.b=b; chartTargets(a,b);
+ if(!animate || !CH.pa.length){ CH.mn=CH.tmn; CH.mx=CH.tmx; CH.anim=false; spark.setImage(drawSpark(1)); }
+ else { CH.t0=now(); CH.anim=true; } }
+function chartStep(){ var p=Math.min(1,(now()-CH.t0)/CH.dur), scaling=Math.abs(CH.tmx-CH.mx)>0.2||Math.abs(CH.tmn-CH.mn)>0.2;
+ if(!CH.anim && !scaling) return;
+ CH.mx+=(CH.tmx-CH.mx)*0.15; CH.mn+=(CH.tmn-CH.mn)*0.15;
+ spark.setImage(drawSpark(CH.anim?p:1)); if(p>=1) CH.anim=false; }
+
+function showMetric(bigTxt,capTxt,a,b,live){
+ cap.setStringValue(capTxt||"");
+ var s=splitNums(bigTxt);
+ if(live && TW.tpl && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals; }                      // same kind of reading: count toward it
+ else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; if(live) renderTween(); else { TW.tpl=null; setBig(bigTxt); } }
+ setChart(nums(a),nums(b),!!live); }
 
 // Progress bar (slides smoothly, with a little shine moving across it)
 var BX=44, BY=44, BW=W-88-52, BH=10;
@@ -419,20 +451,28 @@ var fill=rbox(BX,BY,0,BH,BLUE,5); try{fill.clipsToBounds=true;}catch(e){} cv.add
 var shim=rbox(-80,0,80,BH,C(1,1,1,0.28),5); fill.addSubview(shim);
 var pct=label(W-44-48,BY-4,48,18,12.5,$.NSFontWeightSemibold,2); pct.font=$.NSFont.monospacedDigitSystemFontOfSizeWeight(12.5,$.NSFontWeightSemibold); cv.addSubview(pct);
 
-function drawSpark(a,b){
- var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH)); var all=a.concat(b);
- if(all.length<2) return img;
+function drawSpark(p){   // p = how far the newest point has slid in (0..1)
+ var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH));
+ if(CH.a.length+CH.b.length<2) return img;
  img.lockFocus;
- var mx=Math.max.apply(null,all), mn=b.length?0:Math.min.apply(null,all)*0.8; if(mx-mn<1){mx=mn+1;}
- function series(v,col){ if(v.length<2) return; var N=Math.max(v.length,16), st=SPW/(N-1), xs=SPW-(v.length-1)*st-4;
-  var P=v.map(function(y,k){return [xs+k*st, 5+(y-mn)/(mx-mn)*(SPH-12)];});
-  var area=$.NSBezierPath.bezierPath; area.moveToPoint($.NSMakePoint(P[0][0],0));
-  P.forEach(function(p){area.lineToPoint($.NSMakePoint(p[0],p[1]));}); area.lineToPoint($.NSMakePoint(P[P.length-1][0],0)); area.closePath;
+ var mn=CH.mn, mx=CH.mx, e=1-Math.pow(1-p,3);   // ease-out
+ function curve(path,P,first){ // smooth line through the points (Catmull-Rom turned into bezier curves)
+  if(first) path.moveToPoint($.NSMakePoint(P[0][0],P[0][1])); else path.lineToPoint($.NSMakePoint(P[0][0],P[0][1]));
+  for(var i=0;i<P.length-1;i++){ var p0=P[Math.max(i-1,0)], p1=P[i], p2=P[i+1], p3=P[Math.min(i+2,P.length-1)];
+   path.curveToPointControlPoint1ControlPoint2($.NSMakePoint(p2[0],p2[1]),
+     $.NSMakePoint(p1[0]+(p2[0]-p0[0])/6, p1[1]+(p2[1]-p0[1])/6), $.NSMakePoint(p2[0]-(p3[0]-p1[0])/6, p2[1]-(p3[1]-p1[1])/6)); } }
+ function series(v,prev,col){ if(v.length<2) return; var N=Math.max(v.length,16), st=SPW/(N-1), xs=SPW-(v.length-1)*st-4;
+  var grew = prev.length && (v.length==prev.length+1 || v.length==prev.length);   // one new point arrived
+  var off = grew ? (1-e)*st : 0;
+  var P=v.map(function(y,k){ var val=y;
+    if(grew && k==v.length-1 && prev.length) val=prev[prev.length-1]+(y-prev[prev.length-1])*e;   // newest point eases to its value
+    return [xs+k*st+off, 5+Math.max(0,Math.min(1,(val-mn)/(mx-mn)))*(SPH-12)]; });
+  var area=$.NSBezierPath.bezierPath; area.moveToPoint($.NSMakePoint(P[0][0],0)); curve(area,P,false);
+  area.lineToPoint($.NSMakePoint(P[P.length-1][0],0)); area.closePath;
   col.colorWithAlphaComponent(0.16).setFill; area.fill;
-  var ln=$.NSBezierPath.bezierPath; ln.moveToPoint($.NSMakePoint(P[0][0],P[0][1]));
-  P.forEach(function(p){ln.lineToPoint($.NSMakePoint(p[0],p[1]));}); ln.lineWidth=2; ln.lineJoinStyle=1; col.setStroke; ln.stroke;
-  var e=P[P.length-1]; col.setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(e[0]-3.5,e[1]-3.5,7,7)).fill; }
- series(a,CYAN); series(b,PURPLE);
+  var ln=$.NSBezierPath.bezierPath; curve(ln,P,true); ln.lineWidth=2; ln.lineCapStyle=1; ln.lineJoinStyle=1; col.setStroke; ln.stroke;
+  var d=P[P.length-1]; col.setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(d[0]-3.5,d[1]-3.5,7,7)).fill; }
+ series(CH.a,CH.pa,CYAN); series(CH.b,CH.pb,PURPLE);
  img.unlockFocus; return img; }
 function nums(s){return (s||"").split(",").filter(function(x){return x.length;}).map(parseFloat).filter(function(x){return !isNaN(x);});}
 
@@ -467,13 +507,14 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
    var F=rd(FACTS).split("\n").filter(function(x){return x.length;});
    if(cur.step>=5 && F.length>factIdx+1){ factIdx=F.length-1; holdUntil=0; }   // at the end, skip straight to the score
    if(F.length>factIdx && now()>=holdUntil){
-    var f=F[factIdx++].split("\t"); showMetric(f[0],f[1],f[2],"");
+    var f=F[factIdx++].split("\t"); showMetric(f[0],f[1],f[2],"",false);
     holdUntil=now()+((F.length-factIdx)>1?HOLD_BUSY:HOLD); lastLive="";
    } else if(now()>=holdUntil){
     var lv=rd(LIVE);
-    if(lv.length && lv!=lastLive){ lastLive=lv; var M=lv.split("\n"); showMetric(M[0],M[1],M[2],M[3]); }
+    if(lv.length && lv!=lastLive){ lastLive=lv; var M=lv.split("\n"); showMetric(M[0],M[1],M[2],M[3],true); }
    }
   }
+  tweenStep(); chartStep();   // keep the live number and graph animating smoothly every frame
   var tg=target(); if(cur.to>=100 && cur.eta<=0.5) tg=100;
   if(tg>shown) shown+=(tg-shown)*0.10;
   var fw=Math.max(BH,BW*shown/100);
@@ -1452,6 +1493,8 @@ simulate_run() {
     CAPTIVE="unknown"; sim captive-portal && CAPTIVE="detected"
   fi
 
+  LOSS_EFF=$INET_LOSS; INET_LOST_N=$(( ${INET_LOSS%.*} > 0 || ${INET_LOSS#*.} > 0 ? 3 : 0 )); ONE_TARGET_LOSS=""
+
   # Build the detail rows from the made-up numbers -----------------------------------
   if (( NO_INTERNET )); then
     tgt_rows=("1.1.1.1"$'\t'"No reply (ping blocked or unreachable)"$'\t'"na" "8.8.8.8"$'\t'"No reply (ping blocked or unreachable)"$'\t'"na")
@@ -1667,8 +1710,10 @@ run_tests() {
   # Crunch the ping results for each internet target. We keep track of the lowest loss and lag too:
   # real packet loss on the connection shows up on EVERY target, so if only one server is dropping
   # pings, that's the server limiting ping (common on VPNs), not the user's connection.
-  local min_loss=999 min_lag=999999 max_loss=0 lossy=""
-  track() { (( P_LOSS < min_loss )) && min_loss=$P_LOSS; (( P_LAG < min_lag )) && min_lag=$P_LAG; (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
+  local min_loss=999 min_lag=999999 max_loss=0 lossy="" min_lost_n=0
+  track() { local n=0; [[ "$P_LOST" != "-" ]] && n=${#${(s:,:)P_LOST}}
+            (( P_LOSS < min_loss )) && { min_loss=$P_LOSS; min_lost_n=$n; }; (( P_LAG < min_lag )) && min_lag=$P_LAG
+            (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
   INET_METHOD="ICMP ping"
   for (( i=1; i<=${#INTERNET_TARGETS}; i++ )); do
     ping_stats "${inet_files[$i]}"
@@ -1702,8 +1747,11 @@ run_tests() {
   NO_INTERNET=0
   if (( n_ok == 0 )); then
     NO_INTERNET=1; INET_LAT="-"; INET_JIT="-"; INET_LOSS=100; INET_LAG="-"; REL_PCT=0; OUTAGE_LONGEST_S=$TEST_SECONDS; OUTAGE_EVENTS=1
+    LOSS_EFF=100; INET_LOST_N=$PING_COUNT
   else
     INET_LAT=$(calc "$sum_lat/$n_ok"); INET_JIT=$(calc "$sum_jit/$n_ok"); INET_LOSS=$min_loss; INET_LAG=$min_lag
+    # One lost ping out of ~40 is just noise, so it doesn't count against the score or the findings
+    INET_LOST_N=$min_lost_n; LOSS_EFF=$INET_LOSS; (( INET_LOST_N <= 1 )) && LOSS_EFF=0
     # remember if one server dropped a lot more than the rest, so we can explain it
     ONE_TARGET_LOSS=""; (( n_ok > 1 && max_loss >= 5 && max_loss - min_loss >= 5 )) && ONE_TARGET_LOSS="$lossy $max_loss"
     reliability_calc "${(j:;:)ok_lists}"
@@ -1809,7 +1857,7 @@ run_tests() {
   if (( ! NO_INTERNET )); then
     local pen=0
     isnum "$INET_JIT" && (( INET_JIT > 10 )) && pen=$(calc "$pen+($INET_JIT-10)*0.5")
-    isnum "$INET_LOSS" && pen=$(calc "$pen+$INET_LOSS*4")
+    isnum "$LOSS_EFF" && pen=$(calc "$pen+$LOSS_EFF*4")
     case $BLOAT_GRADE in C) pen=$(calc "$pen+3");; D) pen=$(calc "$pen+8");; F) pen=$(calc "$pen+15");; esac
     RESP_SCORE=$(r0 "$(calc "$RESP_SCORE-$pen")"); (( RESP_SCORE < 0 )) && RESP_SCORE=0
   fi
@@ -1828,10 +1876,10 @@ run_tests() {
   # Video call check, based on what Zoom and Teams recommend (lag 150 ms or less, jitter 30 ms or
   # less, under 1% loss)
   if (( NO_INTERNET )); then VIDEO_STATUS=bad; VIDEO_TEXT="Not ready — no internet"
-  elif (( INET_LAT <= 150 && INET_JIT <= 30 && INET_LOSS < 1 && REL_SCORE >= 90 )); then
+  elif (( INET_LAT <= 150 && INET_JIT <= 30 && LOSS_EFF < 1 && REL_SCORE >= 90 )); then
     VIDEO_STATUS=good; VIDEO_TEXT="Ready"
     [[ "$BLOAT_GRADE" == [DF] ]] && { VIDEO_STATUS=ok; VIDEO_TEXT="Ready, but may stutter during big uploads/downloads"; }
-  elif (( INET_LAT <= 250 && INET_JIT <= 50 && INET_LOSS < 3 )); then VIDEO_STATUS=ok; VIDEO_TEXT="Usable — may stutter or freeze at times"
+  elif (( INET_LAT <= 250 && INET_JIT <= 50 && LOSS_EFF < 3 )); then VIDEO_STATUS=ok; VIDEO_TEXT="Usable — may stutter or freeze at times"
   else VIDEO_STATUS=bad; VIDEO_TEXT="Poor — expect freezing, robotic audio, or drops"; fi
 
   # The headline (like "Fast & Responsive") depends on how responsiveness and speed did
@@ -1870,7 +1918,7 @@ run_tests() {
     elif [[ -n "$GATEWAY" ]]; then
       finding na "Your router didn't answer ping or traceroute, so the local hop couldn't be measured separately."
     fi
-    if (( INET_LOSS >= 2 )); then
+    if (( LOSS_EFF >= 2 )); then
       finding bad "${INET_LOSS}% packet loss — congestion or a weak signal is forcing resends (lag $(ms $INET_LAG) vs latency $(ms $INET_LAT))."
     elif (( INET_JIT > 30 )); then
       finding ok "High jitter ($(ms $INET_JIT)) — response times swing a lot, typical of busy or weak Wi-Fi. Calls may sound choppy."
@@ -1978,7 +2026,7 @@ run_tests() {
     row "Internet lag" "$(ms $INET_LAG)" "$(lag_status $INET_LAG)"
     row "Internet latency" "$(ms $INET_LAT)" "$(lag_status $INET_LAT)"
     row "Jitter" "$(ms $INET_JIT)" "$(jitter_status $INET_JIT)"
-    row "Packet loss" "${INET_LOSS}%" "$(loss_status $INET_LOSS)"
+    row "Packet loss" "${INET_LOSS}%$( (( INET_LOST_N > 0 )) && print " ($INET_LOST_N of $PING_COUNT pings)")" "$(loss_status $LOSS_EFF)"
   fi
   if (( ROUTER_OK )); then
     row "Router (your network)" "$(ms $R_LAT) · jitter $(ms $R_JIT)$(isnum $R_LOSS && print " · ${R_LOSS}% loss")" "$(lag_status $R_LAG)"
