@@ -361,7 +361,7 @@ var W=620,H=372;
 var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),0,2,false);
 win.opaque=false; win.backgroundColor=$.NSColor.clearColor; win.level=5; win.movableByWindowBackground=true;
 win.appearance=$.NSAppearance.appearanceNamed($.NSAppearanceNameDarkAqua);   // dark buttons to match the dark window
-var cv=win.contentView;
+var cv=win.contentView; cv.wantsLayer=true;   // layer-backed = smooth, flicker-free animation
 var card=rbox(10,10,W-20,H-20,C(0.13,0.13,0.15,0.97),22);
 card.shadow=$.NSShadow.alloc.init; card.shadow.shadowBlurRadius=24; card.shadow.shadowOffset=$.NSMakeSize(0,-4); card.shadow.shadowColor=C(0,0,0,0.45);
 cv.addSubview(card);
@@ -414,13 +414,13 @@ function setBig(m){ var txt="", parts=[];
 // target, the value glides toward it on a steady time-based curve, and the graph is a trace of that
 // value recorded 10 times a second that scrolls left at a constant speed. Result: no jumping number,
 // and no stop-and-go graph, no matter how unevenly the readings arrive.
-var TW={tpl:null,key:"",cur:[],tgt:[],shown:""};
+var TW={tpl:null,key:"",cur:[],tgt:[],shown:"",override:null};
 function splitNums(m){ var tpl=[], vals=[], cols=[];
  (m||"").split("|").forEach(function(sg){ var mm=sg.match(/-?\d+(\.\d+)?/);
   if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#")); cols.push(sg.charAt(0)=="p"?PURPLE:CYAN); }
   else { vals.push(null); tpl.push(sg); cols.push(null); } });
  return {tpl:tpl, vals:vals, cols:cols, key:tpl.map(function(t){return t.replace(/^[a-z]:/,"");}).join("|")}; }
-function renderTween(){ var out=TW.tpl.map(function(t,i){ return TW.cur[i]==null ? t : t.replace("#",String(Math.round(TW.cur[i]))); }).join("|");
+function renderTween(){ if(TW.override) return; var out=TW.tpl.map(function(t,i){ return TW.cur[i]==null ? t : t.replace("#",String(Math.round(TW.cur[i]))); }).join("|");
  if(out!=TW.shown){ TW.shown=out; setBig(out); } }
 function tweenStep(dt){ if(!TW.tpl) return; var k=1-Math.exp(-dt/0.28);   // glide toward the target (about 0.3s)
  for(var i=0;i<TW.cur.length;i++){ if(TW.cur[i]==null||TW.tgt[i]==null) continue; TW.cur[i]+=(TW.tgt[i]-TW.cur[i])*k; }
@@ -469,11 +469,14 @@ function showMetric(bigTxt,capTxt,a,b,live){
  cap.setStringValue(capTxt||"");
  var s=splitNums(bigTxt);
  if(live){
-  if(TW.tpl && LV.on && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals; }          // same kind of reading: glide to it
-  else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; renderTween();
+  if(LV.on && TW.tpl && !s.vals.some(function(v){return v!=null;})){                  // "no reply": show it, keep the graph going
+    TW.override=bigTxt; setBig(bigTxt); return; }
+  if(TW.tpl && LV.on && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals;                   // same kind of reading: glide to it
+    if(TW.override){ TW.override=null; TW.shown=""; } }
+  else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; TW.override=null; renderTween();
          LV.hist=[]; LV.last=0; SC.init=false; LV.on=true; LV.cols=s.cols.filter(function(c){return c;});
          LV.base0=(LV.cols.length>1)||/Mbps/.test(capTxt||""); }
- } else { TW.tpl=null; LV.on=false; setBig(bigTxt); spark.setImage(drawStatic(nums(a),nums(b))); }
+ } else { TW.tpl=null; TW.override=null; LV.on=false; setBig(bigTxt); spark.setImage(drawStatic(nums(a),nums(b))); }
 }
 // Progress bar (slides smoothly, with a little shine moving across it)
 var BX=44, BY=44, BW=W-88-52, BH=10;
@@ -496,7 +499,7 @@ function setSteps(k){
  for(var i=0;i<links.length;i++) links[i].goal=(i<k)?1:0;
 }
 
-var shown=0, cur={key:"",step:0,from:0,to:2,eta:2,lin:false,t0:0}, frame=0, lastLive="", factIdx=0, holdUntil=0, lastT=Date.now()/1000, lastPoll=0;
+var shown=0, cur={key:"",step:0,from:0,to:2,eta:2,lin:false,t0:0}, frame=0, lastLive="", factIdx=0, holdUntil=0, lastT=Date.now()/1000, lastPoll=0, lastFW=-1, lastPct="", barDone=false;
 var HOLD=1.7, HOLD_BUSY=1.1;   // how long a one-off result stays up (shorter if a few are waiting)
 function now(){return Date.now()/1000;}
 function target(){ var el=now()-cur.t0, eta=Math.max(cur.eta,0.2), f;
@@ -525,11 +528,13 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
   tweenStep(dt); if(LV.on){ liveSample(tnow); spark.setImage(drawLive(tnow,dt)); }   // smooth live number + scrolling graph
   var tg=target(); if(cur.to>=100 && cur.eta<=0.5) tg=100;
   if(tg>shown) shown+=(tg-shown)*(1-Math.exp(-dt/0.3));
-  var fw=Math.max(BH,BW*shown/100);
-  fill.setFrame($.NSMakeRect(BX,BY,fw,BH));
-  shim.setFrame($.NSMakeRect(((tnow*160)%(fw+160))-80,0,80,BH));
-  pct.setStringValue(Math.floor(shown+0.5)+"%");
-  if(shown>=99.5){ fill.fillColor=GREEN; }
+  var fw=Math.round(Math.max(BH,BW*shown/100));
+  if(fw!=lastFW){ fill.setFrame($.NSMakeRect(BX,BY,fw,BH)); lastFW=fw; }
+  // the shine sweeps across every 1.6s and fades in/out at the ends instead of popping back to the start
+  var ph=(tnow%1.6)/1.6, sx=Math.round(-80+ph*(fw+80));
+  shim.setFrame($.NSMakeRect(sx,0,80,BH)); shim.alphaValue=Math.sin(ph*Math.PI);
+  var pt=Math.floor(shown+0.5)+"%"; if(pt!=lastPct){ pct.setStringValue(pt); lastPct=pt; }
+  if(shown>=99.5 && !barDone){ fill.fillColor=GREEN; barDone=true; }
   var n=nodes[cur.step]; if(n && n.state==1) n.icon.alphaValue=0.55+0.45*Math.sin(tnow*6);
   for(var i=0;i<links.length;i++){ var lk=links[i]; lk.cur+=((lk.goal||0)-lk.cur)*(1-Math.exp(-dt/0.18)); lk.box.setFrame($.NSMakeRect(lk.x,nodeY+15,lk.w*lk.cur,3)); }
  }}}});}
