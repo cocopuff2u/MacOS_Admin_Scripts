@@ -2002,7 +2002,7 @@ run_tests() {
       finding ok "High jitter ($(ms $INET_JIT)) — response times swing a lot, typical of busy or weak Wi-Fi. Calls may sound choppy."
     fi
     if [[ -n "$ONE_TARGET_LOSS" ]]; then
-      finding na "${ONE_TARGET_LOSS% *} ignored ${ONE_TARGET_LOSS#* }% of pings, but the other server didn't. That's the server limiting ping (common on VPNs), not your connection."
+      finding na "${ONE_TARGET_LOSS% *} ignored ${ONE_TARGET_LOSS#* }% of pings, a lot more than the other server. That's the server limiting ping (common on VPNs), not your connection."
     fi
     (( OUTAGE_EVENTS > 0 )) && finding bad "Connection went unresponsive ${OUTAGE_EVENTS}× during the test (longest ${OUTAGE_LONGEST_S}s)."
     (( web_fail > 0 )) && finding bad "$( (( web_fail == 1 )) && print "${failed_sites[1]} didn't load." || print "$web_fail of ${#WEB_TARGETS} test websites didn't load (${(j:, :)failed_sites}).")"
