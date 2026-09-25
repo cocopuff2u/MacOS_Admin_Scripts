@@ -410,40 +410,71 @@ function setBig(m){ var txt="", parts=[];
  as.addAttributeValueRange($.NSFontAttributeName,BIGF,all); as.addAttributeValueRange($.NSParagraphStyleAttributeName,PS,all);
  parts.forEach(function(p){ if(p[1]) as.addAttributeValueRange($.NSForegroundColorAttributeName,p[2],$.NSMakeRange(p[0],p[1])); });
  big.attributedStringValue=as; }
-// Smooth live numbers: instead of jumping straight to each new reading, the number counts toward it
-// over a few frames. Only live readings do this; one-off results just appear.
+// Live readout: the number and the graph are driven by ONE smoothed value. Each new reading sets a
+// target, the value glides toward it on a steady time-based curve, and the graph is a trace of that
+// value recorded 10 times a second that scrolls left at a constant speed. Result: no jumping number,
+// and no stop-and-go graph, no matter how unevenly the readings arrive.
 var TW={tpl:null,key:"",cur:[],tgt:[],shown:""};
-function splitNums(m){ var tpl=[], vals=[];
+function splitNums(m){ var tpl=[], vals=[], cols=[];
  (m||"").split("|").forEach(function(sg){ var mm=sg.match(/-?\d+(\.\d+)?/);
-  if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#")); } else { vals.push(null); tpl.push(sg); } });
- return {tpl:tpl, vals:vals, key:tpl.map(function(t){return t.replace(/^[a-z]:/,"");}).join("|")}; }
+  if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#")); cols.push(sg.charAt(0)=="p"?PURPLE:CYAN); }
+  else { vals.push(null); tpl.push(sg); cols.push(null); } });
+ return {tpl:tpl, vals:vals, cols:cols, key:tpl.map(function(t){return t.replace(/^[a-z]:/,"");}).join("|")}; }
 function renderTween(){ var out=TW.tpl.map(function(t,i){ return TW.cur[i]==null ? t : t.replace("#",String(Math.round(TW.cur[i]))); }).join("|");
  if(out!=TW.shown){ TW.shown=out; setBig(out); } }
-function tweenStep(){ if(!TW.tpl) return; var moving=false;
- for(var i=0;i<TW.cur.length;i++){ if(TW.cur[i]==null||TW.tgt[i]==null) continue; var d=TW.tgt[i]-TW.cur[i];
-  if(Math.abs(d)>0.4){ TW.cur[i]+=d*0.2; moving=true; } else TW.cur[i]=TW.tgt[i]; }
- renderTween(); return moving; }
+function tweenStep(dt){ if(!TW.tpl) return; var k=1-Math.exp(-dt/0.28);   // glide toward the target (about 0.3s)
+ for(var i=0;i<TW.cur.length;i++){ if(TW.cur[i]==null||TW.tgt[i]==null) continue; TW.cur[i]+=(TW.tgt[i]-TW.cur[i])*k; }
+ renderTween(); }
 
-// Smooth graph: new points slide in from the right, the line is drawn as a curve, and the scale eases
-// when the range changes, instead of the whole thing snapping every update.
-var CH={a:[],b:[],pa:[],pb:[],t0:0,dur:0.45,mn:0,mx:1,tmn:0,tmx:1,anim:false};
-function chartTargets(a,b){ var all=a.concat(b); if(all.length<2) return;
- var mx=Math.max.apply(null,all), mn=b.length?0:Math.min.apply(null,all)*0.8; if(mx-mn<1) mx=mn+1; CH.tmn=mn; CH.tmx=mx*1.08; }
-function setChart(a,b,animate){ CH.pa=CH.a; CH.pb=CH.b; CH.a=a; CH.b=b; chartTargets(a,b);
- if(!animate || !CH.pa.length){ CH.mn=CH.tmn; CH.mx=CH.tmx; CH.anim=false; spark.setImage(drawSpark(1)); }
- else { CH.t0=now(); CH.anim=true; } }
-function chartStep(){ var p=Math.min(1,(now()-CH.t0)/CH.dur), scaling=Math.abs(CH.tmx-CH.mx)>0.2||Math.abs(CH.tmn-CH.mn)>0.2;
- if(!CH.anim && !scaling) return;
- CH.mx+=(CH.tmx-CH.mx)*0.15; CH.mn+=(CH.tmn-CH.mn)*0.15;
- spark.setImage(drawSpark(CH.anim?p:1)); if(p>=1) CH.anim=false; }
+var LV={on:false, hist:[], cols:[], last:0, base0:false}, WIN=12;   // seconds of history across the graph
+var SC={mn:0,mx:1,init:false};                                      // graph scale (eases when the range changes)
+function liveSample(t){ var v=[]; for(var i=0;i<TW.cur.length;i++) if(TW.cur[i]!=null) v.push(TW.cur[i]);
+ if(!v.length) return; if(t-LV.last>=0.1){ LV.hist.push({t:t,v:v}); LV.last=t; }
+ while(LV.hist.length && LV.hist[0].t < t-WIN-1) LV.hist.shift(); }
+function drawLive(t,dt){
+ var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH)), H=LV.hist; if(H.length<2) return img;
+ var head=[]; for(var i=0;i<TW.cur.length;i++) if(TW.cur[i]!=null) head.push(TW.cur[i]);
+ var lo=1e9, hi=-1e9; H.forEach(function(h){ h.v.forEach(function(x){ if(x<lo)lo=x; if(x>hi)hi=x; }); });
+ var tmn=LV.base0?0:lo*0.8, tmx=Math.max(hi*1.1, tmn+1);
+ if(!SC.init){ SC.mn=tmn; SC.mx=tmx; SC.init=true; } else { var k=1-Math.exp(-dt/0.5); SC.mn+=(tmn-SC.mn)*k; SC.mx+=(tmx-SC.mx)*k; }
+ var R=SPW-6, span=SPW-12;
+ function Y(x){ return 5+Math.max(0,Math.min(1,(x-SC.mn)/(SC.mx-SC.mn)))*(SPH-12); }
+ img.lockFocus;
+ for(var s=0;s<head.length;s++){ var col=LV.cols[s]||CYAN, P=[];
+  H.forEach(function(h){ if(h.v[s]!=null) P.push([R-(t-h.t)/WIN*span, Y(h.v[s])]); });
+  P.push([R, Y(head[s])]);
+  if(P.length<2) continue;
+  var area=$.NSBezierPath.bezierPath; area.moveToPoint($.NSMakePoint(P[0][0],0));
+  P.forEach(function(p){ area.lineToPoint($.NSMakePoint(p[0],p[1])); }); area.lineToPoint($.NSMakePoint(R,0)); area.closePath;
+  col.colorWithAlphaComponent(0.16).setFill; area.fill;
+  var ln=$.NSBezierPath.bezierPath; ln.moveToPoint($.NSMakePoint(P[0][0],P[0][1]));
+  for(var i=1;i<P.length;i++) ln.lineToPoint($.NSMakePoint(P[i][0],P[i][1]));
+  ln.lineWidth=2; ln.lineCapStyle=1; ln.lineJoinStyle=1; col.setStroke; ln.stroke;
+  col.setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(R-3.5,Y(head[s])-3.5,7,7)).fill; }
+ img.unlockFocus; return img; }
+
+// One-off results can come with a small graph of their own (like each site's load time) - drawn as-is.
+function drawStatic(a,b){
+ var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH)), all=a.concat(b); if(all.length<2) return img;
+ var mx=Math.max.apply(null,all)*1.1, mn=b.length?0:Math.min.apply(null,all)*0.8; if(mx-mn<1) mx=mn+1;
+ img.lockFocus;
+ [[a,CYAN],[b,PURPLE]].forEach(function(sv){ var v=sv[0], col=sv[1]; if(v.length<2) return;
+  var st=(SPW-12)/(Math.max(v.length,16)-1), xs=SPW-6-(v.length-1)*st;
+  var P=v.map(function(y,k){ return [xs+k*st, 5+(y-mn)/(mx-mn)*(SPH-12)]; });
+  var ln=$.NSBezierPath.bezierPath; ln.moveToPoint($.NSMakePoint(P[0][0],P[0][1])); P.forEach(function(p){ ln.lineToPoint($.NSMakePoint(p[0],p[1])); });
+  ln.lineWidth=2; ln.lineJoinStyle=1; col.setStroke; ln.stroke; });
+ img.unlockFocus; return img; }
 
 function showMetric(bigTxt,capTxt,a,b,live){
  cap.setStringValue(capTxt||"");
  var s=splitNums(bigTxt);
- if(live && TW.tpl && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals; }                      // same kind of reading: count toward it
- else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; if(live) renderTween(); else { TW.tpl=null; setBig(bigTxt); } }
- setChart(nums(a),nums(b),!!live); }
-
+ if(live){
+  if(TW.tpl && LV.on && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals; }          // same kind of reading: glide to it
+  else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; renderTween();
+         LV.hist=[]; LV.last=0; SC.init=false; LV.on=true; LV.cols=s.cols.filter(function(c){return c;});
+         LV.base0=(LV.cols.length>1)||/Mbps/.test(capTxt||""); }
+ } else { TW.tpl=null; LV.on=false; setBig(bigTxt); spark.setImage(drawStatic(nums(a),nums(b))); }
+}
 // Progress bar (slides smoothly, with a little shine moving across it)
 var BX=44, BY=44, BW=W-88-52, BH=10;
 cv.addSubview(rbox(BX,BY,BW,BH,C(1,1,1,0.10),5));
@@ -451,29 +482,6 @@ var fill=rbox(BX,BY,0,BH,BLUE,5); try{fill.clipsToBounds=true;}catch(e){} cv.add
 var shim=rbox(-80,0,80,BH,C(1,1,1,0.28),5); fill.addSubview(shim);
 var pct=label(W-44-48,BY-4,48,18,12.5,$.NSFontWeightSemibold,2); pct.font=$.NSFont.monospacedDigitSystemFontOfSizeWeight(12.5,$.NSFontWeightSemibold); cv.addSubview(pct);
 
-function drawSpark(p){   // p = how far the newest point has slid in (0..1)
- var img=$.NSImage.alloc.initWithSize($.NSMakeSize(SPW,SPH));
- if(CH.a.length+CH.b.length<2) return img;
- img.lockFocus;
- var mn=CH.mn, mx=CH.mx, e=1-Math.pow(1-p,3);   // ease-out
- function curve(path,P,first){ // smooth line through the points (Catmull-Rom turned into bezier curves)
-  if(first) path.moveToPoint($.NSMakePoint(P[0][0],P[0][1])); else path.lineToPoint($.NSMakePoint(P[0][0],P[0][1]));
-  for(var i=0;i<P.length-1;i++){ var p0=P[Math.max(i-1,0)], p1=P[i], p2=P[i+1], p3=P[Math.min(i+2,P.length-1)];
-   path.curveToPointControlPoint1ControlPoint2($.NSMakePoint(p2[0],p2[1]),
-     $.NSMakePoint(p1[0]+(p2[0]-p0[0])/6, p1[1]+(p2[1]-p0[1])/6), $.NSMakePoint(p2[0]-(p3[0]-p1[0])/6, p2[1]-(p3[1]-p1[1])/6)); } }
- function series(v,prev,col){ if(v.length<2) return; var N=Math.max(v.length,16), st=SPW/(N-1), xs=SPW-(v.length-1)*st-4;
-  var grew = prev.length && (v.length==prev.length+1 || v.length==prev.length);   // one new point arrived
-  var off = grew ? (1-e)*st : 0;
-  var P=v.map(function(y,k){ var val=y;
-    if(grew && k==v.length-1 && prev.length) val=prev[prev.length-1]+(y-prev[prev.length-1])*e;   // newest point eases to its value
-    return [xs+k*st+off, 5+Math.max(0,Math.min(1,(val-mn)/(mx-mn)))*(SPH-12)]; });
-  var area=$.NSBezierPath.bezierPath; area.moveToPoint($.NSMakePoint(P[0][0],0)); curve(area,P,false);
-  area.lineToPoint($.NSMakePoint(P[P.length-1][0],0)); area.closePath;
-  col.colorWithAlphaComponent(0.16).setFill; area.fill;
-  var ln=$.NSBezierPath.bezierPath; curve(ln,P,true); ln.lineWidth=2; ln.lineCapStyle=1; ln.lineJoinStyle=1; col.setStroke; ln.stroke;
-  var d=P[P.length-1]; col.setFill; $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(d[0]-3.5,d[1]-3.5,7,7)).fill; }
- series(CH.a,CH.pa,CYAN); series(CH.b,CH.pb,PURPLE);
- img.unlockFocus; return img; }
 function nums(s){return (s||"").split(",").filter(function(x){return x.length;}).map(parseFloat).filter(function(x){return !isNaN(x);});}
 
 function setSteps(k){
@@ -488,7 +496,7 @@ function setSteps(k){
  for(var i=0;i<links.length;i++) links[i].goal=(i<k)?1:0;
 }
 
-var shown=0, cur={key:"",step:0,from:0,to:2,eta:2,lin:false,t0:0}, frame=0, lastLive="", factIdx=0, holdUntil=0;
+var shown=0, cur={key:"",step:0,from:0,to:2,eta:2,lin:false,t0:0}, frame=0, lastLive="", factIdx=0, holdUntil=0, lastT=Date.now()/1000, lastPoll=0;
 var HOLD=1.7, HOLD_BUSY=1.1;   // how long a one-off result stays up (shorter if a few are waiting)
 function now(){return Date.now()/1000;}
 function target(){ var el=now()-cur.t0, eta=Math.max(cur.eta,0.2), f;
@@ -496,8 +504,8 @@ function target(){ var el=now()-cur.t0, eta=Math.max(cur.eta,0.2), f;
  return cur.from+(cur.to-cur.from)*Math.min(f,0.985); }
 if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods:{
  'tick:':{types:['void',['id']],implementation:function(s){
-  frame++;
-  if(frame%6==1){
+  frame++; var tnow=now(), dt=Math.min(0.1, tnow-lastT); lastT=tnow;
+  if(tnow-lastPoll>=0.05){ lastPoll=tnow;
    var L=rd(STATUS).split("\n");
    if(L.length>=6){ var key=[L[0],L[1],L[3],L[4]].join("|");
     if(key!=cur.key){ cur={key:key,step:parseInt(L[0])||0,from:parseFloat(L[3])||0,to:parseFloat(L[4])||0,eta:parseFloat(L[5])||3,lin:L[6]=="1",t0:now()};
@@ -514,19 +522,21 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
     if(lv.length && lv!=lastLive){ lastLive=lv; var M=lv.split("\n"); showMetric(M[0],M[1],M[2],M[3],true); }
    }
   }
-  tweenStep(); chartStep();   // keep the live number and graph animating smoothly every frame
+  tweenStep(dt); if(LV.on){ liveSample(tnow); spark.setImage(drawLive(tnow,dt)); }   // smooth live number + scrolling graph
   var tg=target(); if(cur.to>=100 && cur.eta<=0.5) tg=100;
-  if(tg>shown) shown+=(tg-shown)*0.10;
+  if(tg>shown) shown+=(tg-shown)*(1-Math.exp(-dt/0.3));
   var fw=Math.max(BH,BW*shown/100);
   fill.setFrame($.NSMakeRect(BX,BY,fw,BH));
-  shim.setFrame($.NSMakeRect(((frame*5)%(fw+160))-80,0,80,BH));
+  shim.setFrame($.NSMakeRect(((tnow*160)%(fw+160))-80,0,80,BH));
   pct.setStringValue(Math.floor(shown+0.5)+"%");
   if(shown>=99.5){ fill.fillColor=GREEN; }
-  var n=nodes[cur.step]; if(n && n.state==1) n.icon.alphaValue=0.55+0.45*Math.sin(frame/5);
-  for(var i=0;i<links.length;i++){ var lk=links[i]; lk.cur+=((lk.goal||0)-lk.cur)*0.15; lk.box.setFrame($.NSMakeRect(lk.x,nodeY+15,lk.w*lk.cur,3)); }
+  var n=nodes[cur.step]; if(n && n.state==1) n.icon.alphaValue=0.55+0.45*Math.sin(tnow*6);
+  for(var i=0;i<links.length;i++){ var lk=links[i]; lk.cur+=((lk.goal||0)-lk.cur)*(1-Math.exp(-dt/0.18)); lk.box.setFrame($.NSMakeRect(lk.x,nodeY+15,lk.w*lk.cur,3)); }
  }}}});}
 var tk=$.NHTick.alloc.init;
-$.NSTimer.scheduledTimerWithTimeIntervalTargetSelectorUserInfoRepeats(1/30,tk,'tick:',null,true);
+// 60 frames a second, and keep ticking while the window is being dragged (common run loop modes)
+var tmr=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(1/60,tk,'tick:',null,true);
+$.NSRunLoop.currentRunLoop.addTimerForMode(tmr,$.NSRunLoopCommonModes);
 win.center; win.orderFrontRegardless; app.activateIgnoringOtherApps(true);
 app.run();
 JXA
