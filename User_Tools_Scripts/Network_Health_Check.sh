@@ -92,7 +92,9 @@
 #               it is, even if it ignores ping). For a connected VPN it also shows the type (L2TP,
 #               IKEv2, app...), the gateway inside the tunnel and how fast it answers, the server's
 #               name, the tunnel MTU, and for split tunnels which networks/domains go through it. Flags
-#               when the VPN itself is adding the delay. Faster, more exact path MTU check. New test
+#               when the VPN itself is adding the delay. Works with built-in VPNs (L2TP, IKEv2, IPsec)
+#               and VPN apps (tested live with an L2TP VPN and ProtonVPN/WireGuard). Faster, more exact
+#               path MTU check. New test
 #               scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
 #
 ####################################################################################################
@@ -1194,7 +1196,8 @@ vpn_info() {
   for e in $VPN_CLIENTS; do
     n="${e%%|*}"; app="${${e#*|}%|*}"; proc="${e##*|}"
     [[ -e "$app" ]] || /usr/bin/pgrep -qf -- "$proc" || continue
-    if /usr/bin/pgrep -qf -- "$proc"; then st="running"; VPN_RUNNING+="${VPN_RUNNING:+, }$n"; else st="installed, not running"; fi
+    # Running = something is running from inside the app, or its known background process is up
+    if /usr/bin/pgrep -qf -- "$app/Contents/" || /usr/bin/pgrep -qf -- "$proc"; then st="running"; VPN_RUNNING+="${VPN_RUNNING:+, }$n"; else st="installed, not running"; fi
     VPN_APPS+="${VPN_APPS:+; }$n ($st)"
   done
 
@@ -1269,12 +1272,36 @@ vpn_info() {
         PPP:PPTP) VPN_TYPE="PPTP (built into macOS)";;
         IPSec)    VPN_TYPE="IPsec / Cisco IPsec (built into macOS)";;
         IKEv2)    VPN_TYPE="IKEv2 (built into macOS)";;
-        VPN:*)    VPN_TYPE="App VPN (${kind#VPN:})";;
+        VPN:*)    # name the protocol if the app's VPN extension gives it away
+                  local prov=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/NEProviderBundleIdentifier/{print tolower($2); exit}') proto=""
+                  case $prov in *wireguard*) proto="WireGuard";; *openvpn*) proto="OpenVPN";; *ikev2*) proto="IKEv2";; *ipsec*) proto="IPsec";; esac
+                  VPN_TYPE="App VPN${proto:+, $proto} (${kind#VPN:})";;
         *)        VPN_TYPE="$kind";;
       esac
       VPN_TYPE="$name · $VPN_TYPE"
       st=$(/usr/sbin/scutil --nc status "$name" 2>/dev/null)
       VPN_TGW=$(print -r -- "$st" | /usr/bin/awk '/DestAddresses/{f=1; next} f && /[0-9]+ : /{print $3; exit}')
+      # VPN apps usually don't list a far-end address. Instead they add a single-address route to their
+      # gateway inside the tunnel (often also their DNS server), so use that if it isn't our own address.
+      if [[ -z "$VPN_TGW" ]]; then
+        local own=$(print -r -- "$st" | /usr/bin/awk '/Addresses : <array>/ && !/Dest/{f=1; next} f && /[0-9]+ : /{print $3; exit}')
+        VPN_TGW=$(print -r -- "$st" | /usr/bin/awk -v own="$own" '/DestinationAddress :/{d=$3} /SubnetMask : 255.255.255.255/ && d!="" && d!=own {print d; exit} /}/{d=""}')
+      fi
+      # VPN apps built on Apple's VPN framework often don't add the route we use to spot the server,
+      # but they do tell macOS which server they're connected to. Use that if the route trick came up empty.
+      if [[ -z "$VPN_GW" ]]; then
+        # The VPN's own settings (RemoteAddress) are the most reliable. The live status has a
+        # ServerAddress too, but VPN apps often fill that with a placeholder like 127.0.0.1.
+        local srv=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/ (Comm)?RemoteAddress :/{print $2; exit}')
+        [[ -z "$srv" || "$srv" == (127.*|0.0.0.0|localhost) ]] && srv=$(print -r -- "$st" | /usr/bin/awk -F' : ' '/ ServerAddress :/{print $2; exit}')
+        [[ "$srv" == (127.*|0.0.0.0|localhost) ]] && srv=""
+        if [[ "$srv" == <->.<->.<->.<-> ]]; then VPN_GW="$srv"
+        elif [[ -n "$srv" ]]; then VPN_HOST="$srv"; VPN_GW=$(/usr/bin/dig +short +time=2 +tries=1 "$srv" A 2>/dev/null | /usr/bin/grep -E '^[0-9.]+$' | /usr/bin/head -1); fi
+        if [[ -n "$VPN_GW" ]]; then
+          VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+          [[ -z "$VPN_GW_MS" ]] && VPN_GW_NOTE="doesn't answer ping"
+        fi
+      fi
       VPN_DOMAINS=$(print -r -- "$st" | /usr/bin/awk '/SupplementalMatchDomains/{f=1; next} f && /}/{f=0} f && /[0-9]+ : ./{print $3}' | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
     elif [[ -n "$VPN_RUNNING" ]]; then
       VPN_TYPE="$VPN_RUNNING (app tunnel)"
@@ -1300,7 +1327,7 @@ vpn_info() {
     [[ -z "$VPN_DOMAINS" ]] && VPN_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk -v i="($tif)" '/^resolver/{d=""} /^  domain/{d=$3} /if_index/ && index($0,i) && d!="" {print d; d=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -5 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   fi
   # The VPN server's name, if it has one
-  if [[ -n "$VPN_GW" ]]; then
+  if [[ -n "$VPN_GW" && -z "$VPN_HOST" ]]; then
     VPN_HOST=$(/usr/bin/dig +short +time=1 +tries=1 -x "$VPN_GW" 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/\.$//')
   fi
 
@@ -2028,7 +2055,7 @@ run_tests() {
   [[ -n "$VPN_TYPE" ]] && row "Connected VPN" "$VPN_TYPE" na
   row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" "$([[ -n $VPN_TUNNELS ]] && print ok || print na)"
   [[ -n "$VPN_TGW" ]] && row "Tunnel gateway (inside the VPN)" "$VPN_TGW$(isnum "$VPN_TGW_MS" && print " · $VPN_TGW_MS ms" || print " · doesn't answer")" "$(isnum "$VPN_TGW_MS" && { (( VPN_TGW_MS > 150 )) && print ok || print good; } || print na)"
-  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · doesn't answer ping or traceroute")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · ${VPN_GW_NOTE:-doesn't answer ping or traceroute}")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
   [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
   [[ -n "$VPN_DOMAINS" ]] && row "Domains sent to the VPN's DNS" "$VPN_DOMAINS" na
