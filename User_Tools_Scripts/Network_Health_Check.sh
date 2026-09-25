@@ -89,7 +89,8 @@
 #               are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks that it
 #               can reach the MDM server and Apple Push, and VPN detection (which apps are installed or
 #               running, whether a tunnel is up, full vs split tunnel, the VPN server and how far away
-#               it is). New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
+#               it is, even if it ignores ping). Shows the tunnel's MTU and the Mac's own VPN
+#               connections. New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -1200,7 +1201,7 @@ vpn_info() {
   for i in ${=$(/sbin/ifconfig -l)}; do
     [[ "$i" == (utun|ppp|ipsec|gpd|tun|tap|wg)* ]] || continue
     a=$(/sbin/ifconfig "$i" 2>/dev/null | /usr/bin/awk '/inet /{print $2; exit}')
-    [[ -n "$a" && "$a" != 169.254.* ]] && VPN_TUNNELS+="${VPN_TUNNELS:+, }$i $a"
+    [[ -n "$a" && "$a" != 169.254.* ]] && VPN_TUNNELS+="${VPN_TUNNELS:+, }$i $a (MTU $(/sbin/ifconfig "$i" 2>/dev/null | /usr/bin/awk '/mtu /{print $NF; exit}'))"
   done
   if [[ -n "$VPN_TUNNELS" ]]; then
     (( VPN_ACTIVE )) && VPN_MODE="full tunnel (all traffic goes through the VPN)" || VPN_MODE="split tunnel (only some traffic goes through the VPN)"
@@ -1212,8 +1213,21 @@ vpn_info() {
   if [[ -n "$VPN_TUNNELS" && -n "$GATEWAY" ]]; then
     VPN_GW=$(/usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk -v gw="$GATEWAY" -v ifc="$PHYS_IF" \
       '$2==gw && $4==ifc && $3 ~ /H/ && $3 ~ /S/ && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $1 !~ /^169\.254\./ {print $1; exit}')
+    VPN_GW_NOTE=""
     if [[ -n "$VPN_GW" ]]; then
       VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+      if [[ -z "$VPN_GW_MS" ]]; then
+        # A lot of VPN servers ignore ping. A traceroute toward it still gets us the time to the last
+        # router in front of it, which is close enough to tell how far away the server is.
+        /usr/sbin/traceroute -n -q 2 -w 1 -m 16 "$VPN_GW" > "$SCRATCH/vpn_trace.txt" 2>/dev/null & local tp=$!
+        for (( i=0; i<20; i++ )); do kill -0 $tp 2>/dev/null || break; /bin/sleep 0.5; done
+        kill $tp 2>/dev/null; wait $tp 2>/dev/null
+        local last=$(parse_trace "$SCRATCH/vpn_trace.txt" | /usr/bin/awk -F'\t' '$3 != "-" {h=$2; t=$3} END{ if(h!="") print h, t }')
+        if [[ -n "$last" ]]; then
+          VPN_GW_MS=$(r0 "${last#* }")
+          [[ "${last%% *}" != "$VPN_GW" ]] && VPN_GW_NOTE="measured to the last router before it, ${last%% *}"
+        fi
+      fi
     fi
   fi
   # DNS servers the VPN pushed (resolvers tied to a tunnel interface)
@@ -1912,7 +1926,6 @@ run_tests() {
   [[ -n "$CF_COLO" ]] && row "Nearest Cloudflare edge" "$CF_COLO$([[ $CF_WARP == on ]] && print " · WARP on")" na
   row "Proxy" "${PROXY_DESC:-None}" "$([[ -n $PROXY_DESC ]] && print ok || print na)"
   row "Network extensions" "${NE_LIST:-None}" na
-  row "VPN configurations" "${VPN_CONFIGS:-None}" na
 
   section "Device Management" "building.2"
   row "MDM enrollment" "${MDM_ENROLLED:-unknown}$([[ $MDM_ADE == Yes ]] && print " · via Automated Device Enrollment")" "$( [[ $MDM_ENROLLED == "Yes (User Approved)" ]] && print good || { [[ $MDM_ENROLLED == Yes ]] && print ok || print na; })"
@@ -1926,8 +1939,9 @@ run_tests() {
 
   section "VPN" "lock.shield"
   row "VPN apps" "${VPN_APPS:-None found}" na
+  row "Mac VPN connections" "${VPN_CONFIGS:-None set up}" "$([[ $VPN_CONFIGS == *"(Connected)"* ]] && print ok || print na)"
   row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" "$([[ -n $VPN_TUNNELS ]] && print ok || print na)"
-  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW$(isnum "$VPN_GW_MS" && print " · $VPN_GW_MS ms" || print " · doesn't answer ping")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · doesn't answer ping or traceroute")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
   [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
 
