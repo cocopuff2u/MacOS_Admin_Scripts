@@ -1134,6 +1134,8 @@ apps_parse() {
       softwareupdated|com.apple.MobileSoftwareUpdate*) name="macOS updates ($name)";;
       backupd*) name="Time Machine ($name)";;
       avconferenced) name="FaceTime / video call ($name)";;
+      dataaccessd) name="Calendar/Contacts sync ($name)";;
+      apsd) name="Apple Push ($name)";;
     esac
     APP_ROWS+=("$name"$'\t'"$mbps")
     [[ -z "$APP_TOP" ]] && { APP_TOP="$name"; APP_TOP_MBPS="$mbps"; }
@@ -1142,7 +1144,7 @@ apps_parse() {
       if (n ~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp|zsh|awk|mDNSResponder)$/) next
       if (tolower(n) ~ /vpn|wireguard|pangps|globalprotect|zscaler|warp|forti|tailscale|netskope|twingate|openvpn|anyconnect|secureclient|nesessionmanager/) next
       b[n]+=$2+$3 }
-    END { for (n in b) if (b[n]*8/3 >= 100000) printf "%s\t%.2f\n", n, b[n]*8/3/1000000 }' "$SCRATCH/nettop.txt" | /usr/bin/sort -t$'\t' -k2 -rn | /usr/bin/head -5)
+    END { for (n in b) if (b[n]*8/3 >= 250000) printf "%s\t%.2f\n", n, b[n]*8/3/1000000 }' "$SCRATCH/nettop.txt" | /usr/bin/sort -t$'\t' -k2 -rn | /usr/bin/head -5)
   APPS_TOTAL_MBPS=$(/usr/bin/awk -F, '/^,/ {blk++; next} blk==2 && NF>=3 { n=$1; sub(/\.[0-9]+$/,"",n); if (n !~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp)$/) t+=$2+$3 } END { printf "%.2f", t*8/3/1000000 }' "$SCRATCH/nettop.txt")
 }
 rate_text() { (( $1 >= 1 )) && print -r -- "$(r0 $1) Mbps" || print -r -- "$(r0 "$(calc "$1*1000")") Kbps"; }
@@ -1732,7 +1734,7 @@ run_tests() {
   # pings, that's the server limiting ping (common on VPNs), not the user's connection.
   local min_loss=999 min_lag=999999 max_loss=0 lossy="" min_lost_n=0
   local -a T_LAT T_JIT T_LOSS T_LAG
-  track() { local n=0; [[ "$P_LOST" != "-" ]] && n=${#${(s:,:)P_LOST}}
+  track() { local n=0; local -a lz; [[ "$P_LOST" != "-" ]] && { lz=(${(s:,:)P_LOST}); n=${#lz}; }   # count the lost pings (as a list, not characters)
             T_LAT+=($P_AVG); T_JIT+=($P_JIT); T_LOSS+=($P_LOSS); T_LAG+=($P_LAG)
             (( P_LOSS < min_loss )) && { min_loss=$P_LOSS; min_lost_n=$n; }; (( P_LAG < min_lag )) && min_lag=$P_LAG
             (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
