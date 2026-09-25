@@ -66,6 +66,7 @@
 #   ./Network_Health_Check.sh verbose off quick        # quick check, no speed test
 #   NHC_SIMULATE=weak-wifi ./Network_Health_Check.sh   # fake a bad network (NHC_SIMULATE=list shows them all)
 #   NHC_DEBUG=1 ./Network_Health_Check.sh              # keeps the temp files in /tmp/network-health-check.<pid>
+#   NHC_SHOW_IPV6=1 ./Network_Health_Check.sh          # include IPv6 (hidden by default, see HIDE_IPV6)
 #   sudo ./Network_Health_Check.sh silent              # everything, including the root-only Wi-Fi/TCP stuff
 #
 # https://github.com/cocopuff2u
@@ -93,6 +94,9 @@
 #               Look and feel: smoother live readout (gliding numbers, scrolling graph, "no reply"
 #               dips), no progress bar flicker, clearer report labels with a legend, and a cleaner
 #               console log with the important details from every step. - @cocopuff2u
+# 1.2 9/25/26 - No more getting stuck on "Testing websites & DNS": every check has a time limit and
+#               Cancel works right away; DNS and MDM checks run at the same time so they're quick;
+#               the progress window says what it's checking. IPv6 hidden by default. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -142,6 +146,9 @@ DNS_TEST_DOMAINS=(      # names we look up on each DNS server (the Mac's own + 1
 
 # CONNECTION INFO -----------------------------------------------------------
 PUBLIC_IP_LOOKUP_URL="https://ipinfo.io/json"   # used to show the public IP, ISP, and city. Blank = skip it.
+HIDE_IPV6=true          # true  = leave IPv6 out: no IPv6 check, and no IPv6 addresses in the results,
+                        #         report, or JSON (IPv6 DNS servers are left out too)
+                        # false = check IPv6 and show it (NHC_SHOW_IPV6=1 in Terminal does the same)
 
 # REPORT --------------------------------------------------------------------
 # "Save Report" puts a text file on the user's Desktop. These get swapped out in the name:
@@ -201,6 +208,36 @@ FIND_FILE="$SCRATCH/findings.tsv"   # the "What we found" list
 REPORT_FILE="$SCRATCH/report.txt"
 CANCEL_FILE="$SCRATCH/cancel.flag"  # the Cancel button writes here (anyone can write to it, since the window runs as the user)
 : > "$CANCEL_FILE"; /bin/chmod 666 "$CANCEL_FILE"
+TIMEOUT_FILE="$SCRATCH/timeouts.txt"  # commands that got cut off for taking too long (shows up in the log)
+
+# --- Time limits ------------------------------------------------------------------------------------
+# Every command that talks to the network (or to a macOS service that can get stuck, like "profiles"
+# or "system_profiler") runs through lim, so one stuck command can't freeze the whole test.
+#   lim <seconds> <command...>    - runs it and returns its exit code, or 124 if it was cut off
+#   wait_limit <seconds> <pid...> - waits for background jobs, and kills whatever is still going
+# Both also stop right away when the user clicks Cancel (the next check_cancel then quits).
+zmodload zsh/zselect    # zselect -t = a short sleep without starting a new process
+wait_limit() {
+  local end=$(( EPOCHREALTIME + $1 )) p nap=1; shift
+  while :; do
+    for p in "$@"; do kill -0 $p 2>/dev/null && break; p=""; done
+    [[ -z "$p" ]] && return 0
+    if (( EPOCHREALTIME >= end )) || [[ -s "$CANCEL_FILE" ]]; then
+      for p in "$@"; do kill_tree $p; done
+      return 124
+    fi
+    zselect -t $nap 2>/dev/null; (( nap < 10 )) && (( nap *= 2 ))   # check often at first, since most commands finish fast
+  done
+}
+lim() {
+  local secs=$1 p; shift
+  "$@" & p=$!
+  if ! wait_limit $secs $p; then
+    [[ -s "$CANCEL_FILE" ]] || print -r -- "${1:t} ${(j: :)${@[2,-1]}} (${secs}s)" >> "$TIMEOUT_FILE" 2>/dev/null
+    wait $p 2>/dev/null; return 124
+  fi
+  wait $p 2>/dev/null
+}
 
 # --- Reading the parameters -------------------------------------------------
 # Jamf always sends 3 things first ("/", the computer name, the username). We drop those so our
@@ -216,6 +253,7 @@ ACTION_MODE="${1:-verbose}"; ACTION_MODE="${ACTION_MODE:l}"
 [[ -n "$4" ]] && SIMULATE="${4:l}"                         # Jamf $7
 [[ -n "$NHC_SIMULATE" ]] && SIMULATE="${NHC_SIMULATE:l}"
 if [[ "$QUICK_MODE" == true ]]; then TEST_SECONDS=5; SPEED_ENGINE="off"; fi
+[[ -n "$NHC_SHOW_IPV6" ]] && HIDE_IPV6=false
 
 # --- Who's logged in --------------------------------------------------------
 # Figure out who's actually sitting at the Mac, so the windows show up on their screen and the
@@ -250,7 +288,12 @@ logWritable() { [[ -w "$logFile" ]] || { [[ ! -e "$logFile" && -w "${logFile:h}"
 logMe() { local l="$(/bin/date '+%H:%M:%S')  ${(r:6:)1}  ${2}"; print -r -- "$l"; logWritable && print -r -- "$l" >> "$logFile"; return 0; }
 logLine() { print -r -- "$1"; logWritable && print -r -- "$1" >> "$logFile"; return 0; }   # a plain line, no time/level
 # the step log: name padded so the details line up, plus how long it took
-logStep() { logMe STEP "${(r:16:)1}$2${3:+   ($3)}"; }
+logStep() {
+  logMe STEP "${(r:16:)1}$2${3:+   ($3)}"
+  if [[ -s "$TIMEOUT_FILE" ]]; then   # anything that had to be cut off during this step
+    local t; while IFS= read -r t; do logDetail "Timed out" "$t"; done < "$TIMEOUT_FILE"; : > "$TIMEOUT_FILE"
+  fi
+}
 # an indented detail line under a step:   "                  Wi-Fi         IHGWiFi.com · -61 dBm · ..."
 logDetail() { [[ -n "$2" ]] && logLine "                  ${(r:14:)1}$2"; return 0; }
 last_timing() { print -r -- "${${TIMINGS[-1]}#* }s"; }
@@ -788,13 +831,13 @@ detect_connection() {
   while IFS= read -r line; do
     [[ "$line" == "Hardware Port: "* ]] && port="${line#Hardware Port: }"
     [[ "$line" == "Device: "* ]] && PORT_OF[${line#Device: }]="$port"
-  done < <(/usr/sbin/networksetup -listallhardwareports 2>/dev/null)
+  done < <(lim 10 /usr/sbin/networksetup -listallhardwareports 2>/dev/null)
 
   if [[ -n "$def_if" && -n "${PORT_OF[$def_if]}" ]]; then
     PHYS_IF="$def_if"
   else
     # VPN is on (or something odd): use the first real network port that has an IP address.
-    for dev in $(/usr/sbin/networksetup -listnetworkserviceorder 2>/dev/null | /usr/bin/sed -n 's/.*Device: \([^)]*\)).*/\1/p'); do
+    for dev in $(lim 10 /usr/sbin/networksetup -listnetworkserviceorder 2>/dev/null | /usr/bin/sed -n 's/.*Device: \([^)]*\)).*/\1/p'); do
       [[ -n "${PORT_OF[$dev]}" ]] || continue
       [[ -n "$(/usr/sbin/ipconfig getifaddr "$dev" 2>/dev/null)" ]] && { PHYS_IF="$dev"; break; }
     done
@@ -805,7 +848,7 @@ detect_connection() {
   if [[ "$PORT_NAME" == *(Wi-Fi|AirPort)* ]]; then CONN_TYPE="Wi-Fi"; else CONN_TYPE="Ethernet"; fi
   LOCAL_IP=$(/usr/sbin/ipconfig getifaddr "$PHYS_IF" 2>/dev/null)
   GATEWAY=$(/usr/sbin/ipconfig getoption "$PHYS_IF" router 2>/dev/null)
-  DNS_SERVERS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/nameserver\[[0-9]+\]/{print $3}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
+  DNS_SERVERS=$(lim 5 /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk -v h="$HIDE_IPV6" '/nameserver\[[0-9]+\]/ && !(h=="true" && $3 ~ /:/){print $3}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   [[ -n "$LOCAL_IP" ]]
 }
 
@@ -813,7 +856,7 @@ lookup_public_ip() {
   PUB_IP=""; PUB_ISP=""; PUB_LOC=""
   [[ -n "$PUBLIC_IP_LOOKUP_URL" ]] || return 0
   local f="$SCRATCH/ipinfo.json"
-  /usr/bin/curl -s -m 6 -o "$f" "$PUBLIC_IP_LOOKUP_URL" 2>/dev/null || return 0
+  lim 8 /usr/bin/curl -s -m 6 -o "$f" "$PUBLIC_IP_LOOKUP_URL" 2>/dev/null || return 0
   PUB_IP=$(/usr/bin/plutil -extract ip raw -o - "$f" 2>/dev/null)
   PUB_ISP=$(/usr/bin/plutil -extract org raw -o - "$f" 2>/dev/null | /usr/bin/sed -E 's/^AS[0-9]+ //')
   local c=$(/usr/bin/plutil -extract city raw -o - "$f" 2>/dev/null) r=$(/usr/bin/plutil -extract region raw -o - "$f" 2>/dev/null)
@@ -828,7 +871,7 @@ wifi_info() {
   WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""; WIFI_CCA_N=""
   local out ch
   if (( amRoot )); then
-    out=$(${WDUTIL:-/usr/bin/wdutil} info 2>/dev/null | /usr/bin/awk '/^WIFI/{f=1;next} f&&/^[A-Z][A-Z ]+$/{exit} f')
+    out=$(lim 10 ${WDUTIL:-/usr/bin/wdutil} info 2>/dev/null | /usr/bin/awk '/^WIFI/{f=1;next} f&&/^[A-Z][A-Z ]+$/{exit} f')
     kv() { print -r -- "$out" | /usr/bin/awk -F' : ' -v k="$1" '{g=$1; gsub(/^ +| +$/,"",g)} g==k{sub(/^ +/,"",$2); print $2; exit}'; }
     WIFI_SSID=$(kv SSID); WIFI_RSSI=$(kv RSSI); WIFI_NOISE=$(kv Noise); WIFI_TX=$(kv "Tx Rate")
     WIFI_PHY=$(kv "PHY Mode"); WIFI_SEC=$(kv Security); ch=$(kv Channel)          # looks like 5g153/80 (band, channel, width)
@@ -843,7 +886,7 @@ wifi_info() {
   fi
   if [[ -z "$WIFI_RSSI" ]]; then
     # CoreWLAN answers instantly. (system_profiler works too, but it takes ~13 seconds.)
-    out=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var i=$.CWWiFiClient.sharedWiFiClient.interface;
+    out=$(lim 10 /usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var i=$.CWWiFiClient.sharedWiFiClient.interface;
       var c=i.wlanChannel; [i.rssiValue, i.noiseMeasurement, i.transmitRate, c.channelNumber, c.channelBand, c.channelWidth,
       i.activePHYMode, i.security, ObjC.unwrap(i.ssid)||""].join("|")' 2>/dev/null)
     local -a w=("${(@s:|:)out}") bands=("2.4" "5" "6") widths=(20 40 80 160 320)
@@ -858,12 +901,12 @@ wifi_info() {
     fi
   fi
   [[ -z "$WIFI_SSID" || "$WIFI_SSID" == *redacted* ]] && \
-    WIFI_SSID=$(/usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
+    WIFI_SSID=$(lim 5 /usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
   # Newer macOS hides the Wi-Fi name even from root, unless ipconfig's verbose mode is on.
   # So we turn it on just long enough to read the name, then turn it right back off.
   if [[ -z "$WIFI_SSID" || "$WIFI_SSID" == *redacted* ]] && (( amRoot )); then
     /usr/sbin/ipconfig setverbose 1 2>/dev/null
-    WIFI_SSID=$(/usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
+    WIFI_SSID=$(lim 5 /usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
     /usr/sbin/ipconfig setverbose 0 2>/dev/null
   fi
   [[ -z "$WIFI_SSID" || "$WIFI_SSID" == *redacted* ]] && \
@@ -883,7 +926,7 @@ http_probe() {   # <site> <save output here>
   local i t a b
   for (( i=0; i<PING_COUNT; i++ )); do
     check_cancel
-    t=$(/usr/bin/curl -s -I -o /dev/null -m 2 -w '%{time_namelookup} %{time_connect}' "$1" 2>/dev/null)
+    t=$(lim 4 /usr/bin/curl -s -I -o /dev/null -m 2 -w '%{time_namelookup} %{time_connect}' "$1" 2>/dev/null)
     read -r a b <<< "$t"
     if isnum "$b" && isnum "$a" && (( b > 0 )); then print -r -- "icmp_seq=$i time=$(calc "($b-$a)*1000")"; fi
     /bin/sleep "$PING_INTERVAL"
@@ -956,13 +999,13 @@ net_config() {
   DHCP_SERVER=$(/usr/sbin/ipconfig getoption "$PHYS_IF" server_identifier 2>/dev/null)
   DHCP_LEASE=$(/usr/sbin/ipconfig getoption "$PHYS_IF" lease_time 2>/dev/null)
   DHCP_DOMAIN=$(/usr/sbin/ipconfig getoption "$PHYS_IF" domain_name 2>/dev/null)
-  SEARCH_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/search domain/{print $4}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
+  SEARCH_DOMAINS=$(lim 5 /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/search domain/{print $4}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   out=$(/sbin/ifconfig "$PHYS_IF" 2>/dev/null)
   IF_MAC=$(print -r -- "$out" | /usr/bin/awk '/ether /{print $2; exit}')          # the address this network actually sees
-  HW_MAC=$(/usr/sbin/networksetup -getmacaddress "$PHYS_IF" 2>/dev/null | /usr/bin/awk '{print $3}')   # the Mac's real hardware address
+  HW_MAC=$(lim 5 /usr/sbin/networksetup -getmacaddress "$PHYS_IF" 2>/dev/null | /usr/bin/awk '{print $3}')   # the Mac's real hardware address
   IF_MTU=$(print -r -- "$out" | /usr/bin/awk '/mtu /{print $NF; exit}')
   IF_MEDIA=$(print -r -- "$out" | /usr/bin/awk -F'media: ' '/media:/{print $2; exit}')
-  IPV6_ADDR=$(print -r -- "$out" | /usr/bin/awk '/inet6 / && !/fe80/ && !/deprecated/{print $2; exit}')
+  IPV6_ADDR=""; [[ "$HIDE_IPV6" == true ]] || IPV6_ADDR=$(print -r -- "$out" | /usr/bin/awk '/inet6 / && !/fe80/ && !/deprecated/{print $2; exit}')
 
   # Any other network connections that are also up (Wi-Fi and Ethernet at the same time, docks, etc.)
   OTHER_IFS=""
@@ -991,7 +1034,7 @@ net_config() {
 # Which Cloudflare city this Mac connects to. If it's far away, the traffic is taking a weird route
 # (usually a VPN).
 cf_edge() {
-  local out=$(/usr/bin/curl -s -m 4 https://speed.cloudflare.com/cdn-cgi/trace 2>/dev/null)
+  local out=$(lim 6 /usr/bin/curl -s -m 4 https://speed.cloudflare.com/cdn-cgi/trace 2>/dev/null)
   CF_COLO=$(print -r -- "$out" | /usr/bin/awk -F= '/^colo=/{print $2}')
   CF_WARP=$(print -r -- "$out" | /usr/bin/awk -F= '/^warp=/{print $2}')
 }
@@ -1013,7 +1056,7 @@ wifi_sampler() {   # <how many seconds> <save output here>
 # Counts nearby access points from the Mac's last Wi-Fi scan (we don't start a new scan, that would
 # mess with the ping results). Also counts how many are on the same channel as us.
 wifi_neighbors() {
-  local out=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var s=$.CWWiFiClient.sharedWiFiClient.interface.cachedScanResults;
+  local out=$(lim 10 /usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var s=$.CWWiFiClient.sharedWiFiClient.interface.cachedScanResults;
     var a=s?s.allObjects:null, o=[]; if(a){ for(var k=0;k<a.count;k++){ var x=a.objectAtIndex(k); o.push(x.wlanChannel.channelNumber+":"+x.rssiValue);} } o.join(" ")' 2>/dev/null)
   read -r WIFI_NEARBY WIFI_COCHAN WIFI_COCHAN_STRONG <<< "$(print -r -- "$out" | /usr/bin/tr ' ' '\n' | /usr/bin/awk -F: -v ch="$WIFI_CH" '
     NF==2 { n++; if($1==ch){ c++; if($2>-75) s++ } } END{ print n+0, c+0, s+0 }')"
@@ -1037,7 +1080,7 @@ is_private_ip() { [[ "$1" == (10.*|192.168.*|172.(1[6-9]|2[0-9]|3[01]).*|100.(6[
 # answer this. Because it's aimed right at the router it stays on the local network, even with a VPN
 # on. Sometimes a different local address answers (Meraki uses 10.128.128.128), and that's fine.
 router_trace() {   # <save output here, in ping's format>
-  local line=$(/usr/sbin/traceroute -n -m 1 -q 10 -w 1 "$GATEWAY" 2>/dev/null | /usr/bin/tail -1)
+  local line=$(lim 13 /usr/sbin/traceroute -n -m 1 -q 10 -w 1 "$GATEWAY" 2>/dev/null | /usr/bin/tail -1)
   R_RESPONDER=$(print -r -- "$line" | /usr/bin/awk '{for(i=2;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/){print $i; exit}}')
   print -r -- "$line" | /usr/bin/awk '{k=0; for(i=2;i<=NF;i++){ if($i=="*") k++; else if($(i+1)=="ms"){ print "icmp_seq=" k " time=" $i; k++ } }}' > "$1"
 }
@@ -1047,13 +1090,20 @@ dns_tests() {
   local r d q lbl sum n fails; local -a cfg=(${(s:, :)DNS_SERVERS}); local -a rs=($cfg 1.1.1.1 8.8.8.8); rs=(${(u)rs})
   DNS_ROWS=(); DNS_CFG_AVG=""; DNS_PUB_BEST=""
   [[ -x /usr/bin/dig ]] || return 0
-  for r in $rs; do
-    check_cancel
-    sum=0; n=0; fails=0
-    for d in $DNS_TEST_DOMAINS; do
-      q=$(/usr/bin/dig +tries=1 +time=2 @"$r" "$d" A 2>/dev/null | /usr/bin/awk '/Query time/{print $4}')
-      if isnum "$q"; then sum=$(( sum + q )); (( n++ )); else (( fails++ )); fi
-    done
+  # Ask all the servers at the same time (each one still gets its lookups one after another). That
+  # way a DNS server that never answers (common with a VPN's DNS) only costs a few seconds in total.
+  local i; local -a pids
+  for (( i=1; i<=${#rs}; i++ )); do
+    { for d in $DNS_TEST_DOMAINS; do
+        q=$(lim 4 /usr/bin/dig +tries=1 +time=2 @"${rs[$i]}" "$d" A 2>/dev/null | /usr/bin/awk '/Query time/{print $4}')
+        print -r -- "${q:--}"
+      done > "$SCRATCH/dns_$i.txt" } & pids+=($!)
+  done
+  wait_limit $(( ${#DNS_TEST_DOMAINS} * 4 + 2 )) $pids; wait $pids 2>/dev/null
+  for (( i=1; i<=${#rs}; i++ )); do
+    r=${rs[$i]}; sum=0; n=0
+    for q in ${(f)"$(/bin/cat "$SCRATCH/dns_$i.txt" 2>/dev/null)"}; do isnum "$q" && { sum=$(( sum + q )); (( n++ )); }; done
+    fails=$(( ${#DNS_TEST_DOMAINS} - n ))
     if (( ${cfg[(Ie)$r]} )); then lbl="Your DNS $r"
       case $r in 1.1.1.1|1.0.0.1) lbl+=" (Cloudflare)";; 8.8.8.8|8.8.4.4) lbl+=" (Google)";; esac
     else case $r in 1.1.1.1) lbl="Public: Cloudflare 1.1.1.1";; *) lbl="Public: Google $r";; esac; fi
@@ -1071,11 +1121,11 @@ dns_tests() {
 # A few quick health checks: hotel-style sign-in page, IPv6, packet size (MTU), and the clock.
 misc_checks() {
   local out s
-  out=$(/usr/bin/curl -s -m 4 http://captive.apple.com/hotspot-detect.html 2>/dev/null)
+  out=$(lim 6 /usr/bin/curl -s -m 4 http://captive.apple.com/hotspot-detect.html 2>/dev/null)
   if [[ "$out" == *Success* ]]; then CAPTIVE="none"; elif [[ -n "$out" ]]; then CAPTIVE="detected"; else CAPTIVE="unknown"; fi
   IPV6_NET=""
-  if [[ -n "$IPV6_ADDR" ]]; then
-    out=$(/usr/bin/curl -6 -s -m 4 https://api64.ipify.org 2>/dev/null)
+  if [[ -n "$IPV6_ADDR" && "$HIDE_IPV6" != true ]]; then
+    out=$(lim 6 /usr/bin/curl -6 -s -m 4 https://api64.ipify.org 2>/dev/null)
     [[ "$out" == *:* ]] && IPV6_NET="working ($out)" || IPV6_NET="broken"
   fi
   PMTU=""
@@ -1086,12 +1136,12 @@ misc_checks() {
     for sz in 1472 1452 1400 1372 1300 1252 1200; do
       /sbin/ping -D -n -s $sz -c 1 -t 1 "${INTERNET_TARGETS[1]}" > "$SCRATCH/mtu_$sz.txt" 2>&1 & mpids+=($!)
     done
-    wait $mpids 2>/dev/null
+    wait_limit 4 $mpids; wait $mpids 2>/dev/null
     for sz in 1472 1452 1400 1372 1300 1252 1200; do
       /usr/bin/grep -q "bytes from" "$SCRATCH/mtu_$sz.txt" 2>/dev/null && { PMTU=$(( sz + 28 )); break; }
     done
   fi
-  CLOCK_OFF_MS=$(/usr/bin/sntp -t 2 time.apple.com 2>/dev/null | /usr/bin/awk '$1 ~ /^[+-][0-9]/{printf "%.0f", $1*1000; exit}')
+  CLOCK_OFF_MS=$(lim 6 /usr/bin/sntp -t 2 time.apple.com 2>/dev/null | /usr/bin/awk '$1 ~ /^[+-][0-9]/{printf "%.0f", $1*1000; exit}')
 }
 
 # --- Connection history (last 24 hours) ------------------------------------------------------------
@@ -1167,14 +1217,22 @@ rate_text() { (( $1 >= 1 )) && print -r -- "$(r0 $1) Mbps" || print -r -- "$(r0 
 # --- Device management (MDM) -----------------------------------------------------------------------
 # Figures out if the Mac is enrolled in an MDM and which one (Jamf, Intune, Kandji...), then checks it
 # can actually reach that server and Apple's push service. No setup needed, it reads what's on the Mac.
+# The two slow-ish local lookups (enrollment status, and the MDM server address) run in the background
+# during the ping test, so they're already done by the time mgmt_info needs them.
+mgmt_collect() {
+  lim 10 /usr/bin/profiles status -type enrollment > "$SCRATCH/mdm_status.txt" 2>/dev/null
+  # The MDM server address is only readable as root.
+  (( amRoot )) && lim 15 /usr/sbin/system_profiler SPConfigurationProfileDataType 2>/dev/null \
+    | /usr/bin/awk -F'= ' '/ServerURL/{gsub(/[";]/,"",$2); print $2; exit}' > "$SCRATCH/mdm_url.txt"
+}
 mgmt_info() {
   local out host
-  out=$(/usr/bin/profiles status -type enrollment 2>/dev/null)
+  if [[ -n "$MGMT_PID" ]]; then wait_limit 5 $MGMT_PID; wait $MGMT_PID 2>/dev/null   # started during the ping test
+  else mgmt_collect; fi
+  out=$(/bin/cat "$SCRATCH/mdm_status.txt" 2>/dev/null)
   MDM_ENROLLED=$(print -r -- "$out" | /usr/bin/awk -F': ' '/MDM enrollment/{print $2; exit}')     # "Yes (User Approved)" / "No"
   MDM_ADE=$(print -r -- "$out" | /usr/bin/awk -F': ' '/Enrolled via DEP/{print $2; exit}')         # Automated Device Enrollment
-  # The MDM server address is only readable as root.
-  MDM_URL=""
-  (( amRoot )) && MDM_URL=$(/usr/sbin/system_profiler SPConfigurationProfileDataType 2>/dev/null | /usr/bin/awk -F'= ' '/ServerURL/{gsub(/[";]/,"",$2); print $2; exit}')
+  MDM_URL=$(/bin/cat "$SCRATCH/mdm_url.txt" 2>/dev/null)
   JAMF_URL=$(/usr/bin/defaults read /Library/Preferences/com.jamfsoftware.jamf jss_url 2>/dev/null)
 
   # Which MDM is it? Go by the server address if we have it, otherwise by which agent is installed.
@@ -1202,30 +1260,35 @@ mgmt_info() {
     fi
   fi
 
-  # Can we reach the management server?
-  MDM_HOST=""; MDM_REACH=""; MDM_MS=""; JAMF_HEALTH=""
+  # Now the reachability checks, all at the same time so the whole thing takes a few seconds at most:
+  #   - the management server (and Jamf's own health check page, which returns "[]" when it's happy)
+  #   - Apple Push (APNs), which is how MDM commands, notifications, FaceTime and iMessage reach the
+  #     Mac. It uses port 5223, and can fall back to 443 if 5223 is blocked.
+  #   - Apple's enrollment service (used when a Mac enrolls or re-enrolls)
+  MDM_HOST=""; MDM_REACH=""; MDM_MS=""; JAMF_HEALTH=""; APNS_5223=""; APNS_443=""; APPLE_ENROLL=""
   host="${MDM_URL:-$JAMF_URL}"; host="${host#*://}"; host="${host%%/*}"; host="${host%%:*}"
   [[ -z "$host" && "$MDM_VENDOR" == "Microsoft Intune" ]] && host="enrollment.manage.microsoft.com"
+  local f="$SCRATCH/mgmt" port; local -a pids
+  /bin/rm -f "$f".*
+  [[ -n "$host" ]] && { lim 6 /usr/bin/curl -s -o /dev/null -m 5 -w '%{http_code} %{time_connect}' "https://$host/" > "$f.mdm" 2>/dev/null & pids+=($!); }
+  [[ -n "$JAMF_URL" ]] && { lim 6 /usr/bin/curl -s -m 5 "${JAMF_URL%/}/healthCheck.html" > "$f.jamf" 2>/dev/null & pids+=($!); }
+  for port in 5223 443; do
+    { local t0=$EPOCHREALTIME; lim 5 /usr/bin/nc -z -G 3 courier.push.apple.com $port >/dev/null 2>&1 && calc "($EPOCHREALTIME-$t0)*1000" > "$f.apns$port"; } & pids+=($!)
+  done
+  lim 6 /usr/bin/curl -s -o /dev/null -m 5 -w '%{http_code}' https://deviceenrollment.apple.com/ > "$f.enroll" 2>/dev/null & pids+=($!)
+  wait_limit 7 $pids; wait $pids 2>/dev/null
+
   if [[ -n "$host" ]]; then
     MDM_HOST="$host"
-    read -r out MDM_MS <<< "$(/usr/bin/curl -s -o /dev/null -m 8 -w '%{http_code} %{time_connect}' "https://$host/" 2>/dev/null)"
+    read -r out MDM_MS < "$f.mdm" 2>/dev/null
     if [[ -n "$out" && "$out" != 000 ]]; then MDM_REACH=yes; MDM_MS=$(calc "$MDM_MS*1000"); else MDM_REACH=no; MDM_MS=""; fi
   fi
-  if [[ -n "$JAMF_URL" ]]; then   # Jamf's own health check page returns "[]" when the server is happy
-    out=$(/usr/bin/curl -s -m 8 "${JAMF_URL%/}/healthCheck.html" 2>/dev/null)
+  if [[ -n "$JAMF_URL" ]]; then
+    out=$(/bin/cat "$f.jamf" 2>/dev/null)
     [[ "$out" == "[]" ]] && JAMF_HEALTH="healthy" || JAMF_HEALTH="${out:-no answer}"
   fi
-
-  # Apple Push (APNs) is how MDM commands, notifications, FaceTime and iMessage reach the Mac. It uses
-  # port 5223, and can fall back to 443 if 5223 is blocked.
-  APNS_5223=""; APNS_443=""
-  local t0=$EPOCHREALTIME
-  /usr/bin/nc -z -G 3 courier.push.apple.com 5223 >/dev/null 2>&1 && APNS_5223=$(calc "($EPOCHREALTIME-$t0)*1000")
-  t0=$EPOCHREALTIME
-  /usr/bin/nc -z -G 3 courier.push.apple.com 443 >/dev/null 2>&1 && APNS_443=$(calc "($EPOCHREALTIME-$t0)*1000")
-  # Apple's enrollment service (used when a Mac enrolls or re-enrolls)
-  APPLE_ENROLL=""
-  out=$(/usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code}' https://deviceenrollment.apple.com/ 2>/dev/null)
+  APNS_5223=$(/bin/cat "$f.apns5223" 2>/dev/null); APNS_443=$(/bin/cat "$f.apns443" 2>/dev/null)
+  out=$(/bin/cat "$f.enroll" 2>/dev/null)
   [[ -n "$out" && "$out" != 000 ]] && APPLE_ENROLL=yes || APPLE_ENROLL=no
 }
 
@@ -1285,9 +1348,9 @@ vpn_info() {
   local line name
   while IFS= read -r line; do
     name=$(print -r -- "$line" | /usr/bin/awk -F'"' '{print $2}'); [[ -n "$name" ]] || continue
-    a=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/(Comm)?RemoteAddress/{print $2; exit}')
+    a=$(lim 5 /usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/(Comm)?RemoteAddress/{print $2; exit}')
     [[ -n "$a" ]] && VPN_SERVERS+="${VPN_SERVERS:+; }$name $a"
-  done < <(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '"')
+  done < <(lim 5 /usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '"')
 
   # Is a tunnel actually up? macOS has a bunch of its own utun interfaces, but a real VPN tunnel has
   # an IPv4 address on it.
@@ -1309,10 +1372,10 @@ vpn_info() {
     VPN_GW_NOTE=""
     if [[ -n "$VPN_GW" ]]; then
       if [[ -n "$VPN_PING_PID" ]]; then   # pinged back during the ping test
-        wait $VPN_PING_PID 2>/dev/null
+        wait_limit 6 $VPN_PING_PID; wait $VPN_PING_PID 2>/dev/null
         VPN_GW_MS=$(/usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}' "$SCRATCH/vpn_ping.txt" 2>/dev/null)
       else
-        VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+        VPN_GW_MS=$(lim 5 /sbin/ping -n -c 3 -i 0.3 -t 3 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
       fi
       if [[ -z "$VPN_GW_MS" ]]; then
         # A lot of VPN servers ignore ping. A traceroute toward it still gets us the time to the last
@@ -1336,7 +1399,7 @@ vpn_info() {
   local tif="${${VPN_TUNNELS%%,*}%% *}" nc_line kind
   if [[ -n "$tif" ]]; then
     # A VPN set up in the Mac's own settings shows up in scutil, which knows the type and inside gateway
-    nc_line=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '(Connected)' | /usr/bin/head -1)
+    nc_line=$(lim 5 /usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '(Connected)' | /usr/bin/head -1)
     if [[ -n "$nc_line" ]]; then
       name=$(print -r -- "$nc_line" | /usr/bin/awk -F'"' '{print $2}')
       kind=$(print -r -- "$nc_line" | /usr/bin/sed -n 's/.*\[\(.*\)\].*/\1/p')
@@ -1346,13 +1409,13 @@ vpn_info() {
         IPSec)    VPN_TYPE="IPsec / Cisco IPsec (built into macOS)";;
         IKEv2)    VPN_TYPE="IKEv2 (built into macOS)";;
         VPN:*)    # name the protocol if the app's VPN extension gives it away
-                  local prov=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/NEProviderBundleIdentifier/{print tolower($2); exit}') proto=""
+                  local prov=$(lim 5 /usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/NEProviderBundleIdentifier/{print tolower($2); exit}') proto=""
                   case $prov in *wireguard*) proto="WireGuard";; *openvpn*) proto="OpenVPN";; *ikev2*) proto="IKEv2";; *ipsec*) proto="IPsec";; esac
                   VPN_TYPE="App VPN${proto:+, $proto} (${kind#VPN:})";;
         *)        VPN_TYPE="$kind";;
       esac
       VPN_TYPE="$name · $VPN_TYPE"
-      st=$(/usr/sbin/scutil --nc status "$name" 2>/dev/null)
+      st=$(lim 5 /usr/sbin/scutil --nc status "$name" 2>/dev/null)
       VPN_TGW=$(print -r -- "$st" | /usr/bin/awk '/DestAddresses/{f=1; next} f && /[0-9]+ : /{print $3; exit}')
       # VPN apps usually don't list a far-end address. Instead they add a single-address route to their
       # gateway inside the tunnel (often also their DNS server), so use that if it isn't our own address.
@@ -1365,13 +1428,13 @@ vpn_info() {
       if [[ -z "$VPN_GW" ]]; then
         # The VPN's own settings (RemoteAddress) are the most reliable. The live status has a
         # ServerAddress too, but VPN apps often fill that with a placeholder like 127.0.0.1.
-        local srv=$(/usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/ (Comm)?RemoteAddress :/{print $2; exit}')
+        local srv=$(lim 5 /usr/sbin/scutil --nc show "$name" 2>/dev/null | /usr/bin/awk -F' : ' '/ (Comm)?RemoteAddress :/{print $2; exit}')
         [[ -z "$srv" || "$srv" == (127.*|0.0.0.0|localhost) ]] && srv=$(print -r -- "$st" | /usr/bin/awk -F' : ' '/ ServerAddress :/{print $2; exit}')
         [[ "$srv" == (127.*|0.0.0.0|localhost) ]] && srv=""
         if [[ "$srv" == <->.<->.<->.<-> ]]; then VPN_GW="$srv"
-        elif [[ -n "$srv" ]]; then VPN_HOST="$srv"; VPN_GW=$(/usr/bin/dig +short +time=2 +tries=1 "$srv" A 2>/dev/null | /usr/bin/grep -E '^[0-9.]+$' | /usr/bin/head -1); fi
+        elif [[ -n "$srv" ]]; then VPN_HOST="$srv"; VPN_GW=$(lim 4 /usr/bin/dig +short +time=2 +tries=1 "$srv" A 2>/dev/null | /usr/bin/grep -E '^[0-9.]+$' | /usr/bin/head -1); fi
         if [[ -n "$VPN_GW" ]]; then
-          VPN_GW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+          VPN_GW_MS=$(lim 5 /sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_GW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
           [[ -z "$VPN_GW_MS" ]] && VPN_GW_NOTE="doesn't answer ping"
         fi
       fi
@@ -1384,7 +1447,7 @@ vpn_info() {
     # How long it takes to get through the tunnel to that gateway. If it ignores ping, the first hop
     # of the traceroute (which goes through the tunnel on a full-tunnel VPN) is the same router.
     if [[ -n "$VPN_TGW" ]]; then
-      VPN_TGW_MS=$(/sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_TGW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
+      VPN_TGW_MS=$(lim 5 /sbin/ping -n -c 3 -i 0.3 -t 2 "$VPN_TGW" 2>/dev/null | /usr/bin/awk -F'/' '/round-trip/{printf "%.0f", $5}')
       if [[ -z "$VPN_TGW_MS" && -n "${hops[1]}" ]]; then
         local -a h1=("${(@ps:\t:)hops[1]}")
         [[ "${h1[2]}" == "$VPN_TGW" ]] && isnum "${h1[3]}" && VPN_TGW_MS=$(r0 "${h1[3]}")
@@ -1401,11 +1464,11 @@ vpn_info() {
   fi
   # The VPN server's name, if it has one
   if [[ -n "$VPN_GW" && -z "$VPN_HOST" ]]; then
-    VPN_HOST=$(/usr/bin/dig +short +time=1 +tries=1 -x "$VPN_GW" 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/\.$//')
+    VPN_HOST=$(lim 3 /usr/bin/dig +short +time=1 +tries=1 -x "$VPN_GW" 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/\.$//')
   fi
 
   # DNS servers the VPN pushed (resolvers tied to a tunnel interface)
-  VPN_DNS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/^resolver/{ns=""} /nameserver\[/{ns=ns (ns==""?"":", ") $3} /if_index/ && /(utun|ppp|ipsec)/ && ns!="" {print ns; ns=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -2 | /usr/bin/paste -sd';' -)
+  VPN_DNS=$(lim 5 /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk -v h="$HIDE_IPV6" '/^resolver/{ns=""} /nameserver\[/ && !(h=="true" && $3 ~ /:/){ns=ns (ns==""?"":", ") $3} /if_index/ && /(utun|ppp|ipsec)/ && ns!="" {print ns; ns=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -2 | /usr/bin/paste -sd';' -)
 }
 
 # --- Speed ------------------------------------------------------------------------
@@ -1415,9 +1478,9 @@ speed_apple() {
   local pid
   # -s runs download first, then upload. If they run at the same time (Apple's default) they fight
   # over the Wi-Fi and the download number comes out way too low.
-  /usr/bin/networkQuality -c -s -M "$SPEED_MAX_SECONDS" > "$f" 2>/dev/null & pid=$!
+  lim $(( SPEED_MAX_SECONDS + 15 )) /usr/bin/networkQuality -c -s -M "$SPEED_MAX_SECONDS" > "$f" 2>/dev/null & pid=$!
   throughput_monitor $pid both; wait $pid
-  if [[ ! -s "$f" ]]; then /usr/bin/networkQuality -c -s > "$f" 2>/dev/null & pid=$!; throughput_monitor $pid both; wait $pid; fi
+  if [[ ! -s "$f" ]] && ! [[ -s "$CANCEL_FILE" ]]; then lim $(( SPEED_MAX_SECONDS + 15 )) /usr/bin/networkQuality -c -s -M "$SPEED_MAX_SECONDS" > "$f" 2>/dev/null & pid=$!; throughput_monitor $pid both; wait $pid; fi
   local dl=$(/usr/bin/plutil -extract dl_throughput raw -o - "$f" 2>/dev/null)
   local ul=$(/usr/bin/plutil -extract ul_throughput raw -o - "$f" 2>/dev/null)
   isnum "$dl" || return 1
@@ -1438,14 +1501,14 @@ speed_cloudflare() {
   local up="$SCRATCH/upload.bin" t lp="$SCRATCH/loaded.txt" pid
   # Keep pinging during the download so we can see how much the lag goes up (bufferbloat)
   /sbin/ping -n -i 0.5 -W 1000 "${INTERNET_TARGETS[1]}" > "$lp" 2>&1 & pid=$!
-  /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_download}' "https://speed.cloudflare.com/__down?bytes=$CF_DOWN_BYTES" > "$SCRATCH/cf_down.txt" 2>/dev/null &
+  lim $(( SPEED_MAX_SECONDS + 5 )) /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_download}' "https://speed.cloudflare.com/__down?bytes=$CF_DOWN_BYTES" > "$SCRATCH/cf_down.txt" 2>/dev/null &
   local cpid=$!; throughput_monitor $cpid down; wait $cpid; t=$(<"$SCRATCH/cf_down.txt")
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   isnum "$t" && (( t > 0 )) || return 1
   DL_MBPS=$(calc "$t*8/1000000")
   spin_status 3 "Testing upload speed" "Uploading to speed.cloudflare.com…" $(( (P_SPD[1]+P_SPD[2])/2 )) ${P_SPD[2]} $(( SPEED_MAX_SECONDS/2 + 1 ))
   /bin/dd if=/dev/zero of="$up" bs=1000000 count=$(( CF_UP_BYTES / 1000000 )) 2>/dev/null
-  /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_upload}' --data-binary @"$up" "https://speed.cloudflare.com/__up" > "$SCRATCH/cf_up.txt" 2>/dev/null &
+  lim $(( SPEED_MAX_SECONDS + 5 )) /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_upload}' --data-binary @"$up" "https://speed.cloudflare.com/__up" > "$SCRATCH/cf_up.txt" 2>/dev/null &
   cpid=$!; throughput_monitor $cpid up; wait $cpid; t=$(<"$SCRATCH/cf_up.txt")
   isnum "$t" && UL_MBPS=$(calc "$t*8/1000000")
   local PING_COUNT=9999; ping_stats "$lp"; isnum "$P_AVG" && LOADED_MS="$P_AVG"
@@ -1515,7 +1578,7 @@ simulate_run() {
   sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40 (MTU 1400)"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"
                        VPN_TYPE="GlobalProtect (app tunnel)"; VPN_TGW="10.20.30.1"; VPN_TGW_MS=41; VPN_HOST="gp-east.vpn.example.com"; VPN_DOMAINS="corp.example.com"; }
   sim vpn         && { VPN_ACTIVE=1; VPN_NAME="Corporate VPN (simulated)"; PMTU=1400; INET_LAT=$(( INET_LAT + 30 )); INET_LAG=$(( INET_LAG + 30 )); VPN_CONFIGS="Corporate VPN (Connected)"; NE_LIST="Example VPN Extension"; }
-  sim broken-ipv6 && { IPV6_ADDR="2001:db8::50"; IPV6_NET="broken"; }
+  sim broken-ipv6 && [[ "$HIDE_IPV6" != true ]] && { IPV6_ADDR="2001:db8::50"; IPV6_NET="broken"; }
   sim router-bottleneck && { R_LAT=118; R_JIT=45; R_LAG=140; R_LOSS=4; INET_LAT=150; INET_LAG=170; INET_JIT=48; }
   sim isp-problem && { R_LAT=3; R_LAG=3; ISP_HOP_MS=150; INET_LAT=185; INET_LAG=190; INET_JIT=12; }
   sim clock-skew  && { CLOCK_OFF_MS=312000; }
@@ -1590,7 +1653,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.1"
+SCRIPT_VERSION="1.2"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
@@ -1634,7 +1697,7 @@ write_json() {
     print -r -- "  \"top_app\": {\"name\": $(jstr "$APP_TOP"), \"mbps\": $(jnum "$APP_TOP_MBPS")},"
     print -r -- "  \"management\": {\"mdm\": $(jstr "$MDM_ENROLLED"), \"ade\": $(jstr "$MDM_ADE"), \"vendor\": $(jstr "$MDM_VENDOR"), \"server\": $(jstr "$MDM_HOST"), \"server_reachable\": $(jstr "$MDM_REACH"), \"apns_5223_ms\": $(jnum "$APNS_5223"), \"apns_443_ms\": $(jnum "$APNS_443")},"
     print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_name\": $(jstr "$VPN_HOST"), \"server_ms\": $(jnum "$VPN_GW_MS"), \"type\": $(jstr "$VPN_TYPE"), \"tunnel_gateway\": $(jstr "$VPN_TGW"), \"tunnel_gateway_ms\": $(jnum "$VPN_TGW_MS"), \"split_routes\": $(jnum "$VPN_ROUTE_COUNT"), \"dns_domains\": $(jstr "$VPN_DOMAINS")},"
-    print -r -- "  \"checks\": {\"captive_portal\": $(jstr "$CAPTIVE"), \"ipv6\": $(jstr "${IPV6_NET:-not configured}"), \"path_mtu\": $(jnum "$PMTU"), \"clock_offset_ms\": $(jnum "$CLOCK_OFF_MS"), \"proxy\": $(jstr "$PROXY_DESC")},"
+    print -r -- "  \"checks\": {\"captive_portal\": $(jstr "$CAPTIVE"), \"ipv6\": $([[ $HIDE_IPV6 == true ]] && jstr "hidden" || jstr "${IPV6_NET:-not configured}"), \"path_mtu\": $(jnum "$PMTU"), \"clock_offset_ms\": $(jnum "$CLOCK_OFF_MS"), \"proxy\": $(jstr "$PROXY_DESC")},"
     print -rn -- "  \"timings_s\": {"; first=1
     for t in $TIMINGS; do (( first )) || print -rn -- ", "; first=0; print -rn -- "$(jstr "${t% *}"): ${t#* }"; done
     print -r -- "},"
@@ -1722,6 +1785,7 @@ run_tests() {
   fi
   history_collect & local hist_pid=$!     # last 24h of connection drops (reads the Mac's logs)
   apps_collect & local apps_pid=$!        # which apps are using the network right now
+  mgmt_collect & MGMT_PID=$!              # MDM enrollment + server address (used later by mgmt_info)
   local wifi_pid=""; [[ "$CONN_TYPE" == "Wi-Fi" ]] && { wifi_sampler "$(( TEST_SECONDS > 2 ? TEST_SECONDS - 1 : 1 ))" "$wifi_file" & wifi_pid=$!; }
 
   local start=$SECONDS last; local -a lspk
@@ -1754,7 +1818,7 @@ run_tests() {
   # the Wi-Fi reader only saves when it's done, so give it a moment instead of cutting it off
   if [[ -n "$wifi_pid" ]]; then
     for (( i=0; i<8; i++ )); do kill -0 $wifi_pid 2>/dev/null || break; /bin/sleep 0.5; done
-    kill $wifi_pid 2>/dev/null; wait $wifi_pid 2>/dev/null
+    kill_tree $wifi_pid; wait $wifi_pid 2>/dev/null
   fi
 
   # Crunch the ping results for each internet target. We keep track of the lowest loss and lag too:
@@ -1854,15 +1918,19 @@ run_tests() {
   (( ${#APP_ROWS} )) && logDetail "Other apps" "$(for _t in ${APP_ROWS[1,3]}; do print -n "${_t%%$'\t'*} $(rate_text ${_t##*$'\t'})  "; done)"
 
   # 3. Websites, DNS, and the other quick checks -----------------------------------------
-  local code dns conn tls ttfb hv rip try; local -a failed_sites
+  local code dns conn tls ttfb hv rip try out rc; local -a failed_sites
   if (( ! NO_INTERNET )); then
     spin_status 2 "Testing websites & DNS" "Loading ${#WEB_TARGETS} common sites…" ${P_WEB[1]} ${P_WEB[2]} $(( ${#WEB_TARGETS} + 4 ))
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
       check_cancel
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
+      spin_status 2 "Testing websites & DNS" "Loading $host ($i of ${#WEB_TARGETS})…" ${P_WEB[1]} ${P_WEB[2]} $(( ${#WEB_TARGETS} + 4 ))
       for try in 1 2; do     # try twice, so one random blip doesn't show up as a failed site
-        read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
+        out=$(lim 8 /usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null); rc=$?
+        read -r code dns conn tls ttfb hv rip <<< "$out"
         [[ -n "$code" && "$code" != 000 ]] && break
+        (( rc == 28 || rc == 124 )) && break   # it timed out, which isn't a blip - don't wait all over again
+        check_cancel
       done
       if [[ -n "$code" && "$code" != 000 ]] && isnum "$ttfb"; then
         dns=$(calc "$dns*1000"); ttfb=$(calc "$ttfb*1000"); conn=$(calc "$conn*1000"); tls=$(calc "$tls*1000")
@@ -1876,13 +1944,18 @@ run_tests() {
     done
     if (( web_fail )); then fact "g:$(( ${#WEB_TARGETS} - web_fail )) loaded|w:  ·  |r:$web_fail failed" "websites  ·  ${(j:, :)failed_sites} didn't load"
     else fact "g:All ${#WEB_TARGETS} loaded" "websites"; fi
-    spin_status 2 "Testing websites & DNS" "Timing DNS servers, checking IPv6, MTU and clock…" ${P_WEB[1]} ${P_WEB[2]} 4
+    spin_status 2 "Testing websites & DNS" "Timing DNS servers…" ${P_WEB[1]} ${P_WEB[2]} 4
     dns_tests
     [[ -n "$DNS_CFG_AVG" && "$DNS_CFG_AVG" != 9999 ]] && fact "$( (( DNS_CFG_AVG > 150 )) && print r || { (( DNS_CFG_AVG > 60 )) && print o || print g; })":"$DNS_CFG_AVG ms" "your DNS server lookup time"
   fi
   (( n_web )) && { WEB_TTFB=$(calc "$sum_ttfb/$n_web"); WEB_DNS=$(calc "$sum_dns/$n_web"); } || { WEB_TTFB="-"; WEB_DNS="-"; }
-  misc_checks
-  mgmt_info; vpn_info
+  check_cancel
+  spin_status 2 "Testing websites & DNS" "Checking$([[ $HIDE_IPV6 == true ]] || print " IPv6,") sign-in pages, packet size and clock…" ${P_WEB[1]} ${P_WEB[2]} 4
+  misc_checks; check_cancel
+  spin_status 2 "Testing websites & DNS" "Checking device management (MDM)…" ${P_WEB[1]} ${P_WEB[2]} 4
+  mgmt_info; check_cancel
+  spin_status 2 "Testing websites & DNS" "Checking VPN…" ${P_WEB[1]} ${P_WEB[2]} 4
+  vpn_info
   check_cancel; mark web_dns
   logStep "Web & DNS" "$(( n_web )) of ${#WEB_TARGETS} sites loaded$( (( web_fail )) && print " (failed: ${(j:, :)failed_sites})") · first byte $(ms $WEB_TTFB) · your DNS ${DNS_CFG_AVG:-?} ms" "$(last_timing)"
   logDetail "DNS" "your DNS ${DNS_CFG_AVG:-?} ms vs public ${DNS_PUB_BEST:-?} ms · captive portal ${CAPTIVE:-?} · path MTU ${PMTU:-?} · clock off ${CLOCK_OFF_MS:-?} ms"
@@ -2035,7 +2108,7 @@ run_tests() {
     if [[ -n "$SPEED_SCORE" ]] && (( SPEED_SCORE < 60 )); then
       finding ok "Speed is low (↓ $(r0 $DL_MBPS) / ↑ $(r0 ${UL_MBPS:-0}) Mbps) — Wi-Fi signal, router limits, congestion, or VPN can all cap it."
     fi
-    [[ "$IPV6_NET" == broken ]] && finding bad "IPv6 is configured but doesn't reach the internet — sites may hang a few seconds before loading."
+    [[ "$IPV6_NET" == broken && "$HIDE_IPV6" != true ]] && finding bad "IPv6 is configured but doesn't reach the internet — sites may hang a few seconds before loading."
     [[ -n "$PMTU" ]] && (( PMTU < 1500 )) && finding ok "Path MTU is $PMTU (below 1500) — can break large packets on VPNs and some apps."
   fi
   if isnum "$CLOCK_OFF_MS" && (( ${CLOCK_OFF_MS#-} > 60000 )); then
@@ -2187,7 +2260,7 @@ run_tests() {
   fi
   row "Interface MTU" "${IF_MTU:-—}" na
   [[ -n "$IF_MEDIA" && "$CONN_TYPE" == Ethernet ]] && row "Ethernet link" "$IF_MEDIA" "$([[ $IF_MEDIA == *(10baseT|100baseTX|half-duplex)* ]] && print bad || print good)"
-  row "IPv6" "${IPV6_ADDR:+$IPV6_ADDR · }${IPV6_NET:-not configured}" "$([[ $IPV6_NET == broken ]] && print bad || { [[ $IPV6_NET == working* ]] && print good || print na; })"
+  [[ "$HIDE_IPV6" == true ]] || row "IPv6" "${IPV6_ADDR:+$IPV6_ADDR · }${IPV6_NET:-not configured}" "$([[ $IPV6_NET == broken ]] && print bad || { [[ $IPV6_NET == working* ]] && print good || print na; })"
   [[ -n "$OTHER_IFS" ]] && row "Other active interfaces" "$OTHER_IFS" na
   [[ -n "$PUB_IP" ]] && row "Public IP" "$PUB_IP" na
   [[ -n "$CF_COLO" ]] && row "Nearest Cloudflare edge" "$CF_COLO$([[ $CF_WARP == on ]] && print " · WARP on")" na
@@ -2322,9 +2395,9 @@ build_report() {
       print -r -- ""; print -r -- "==================== RAW OUTPUT ===================="
       print -r -- ""; print -r -- "--- traceroute -n ${INTERNET_TARGETS[1]}"; /bin/cat "$SCRATCH/trace.txt" 2>/dev/null
       print -r -- ""; print -r -- "--- netstat -rn -f inet (default routes)"; /usr/sbin/netstat -rn -f inet 2>/dev/null | /usr/bin/awk 'NR<=4 || /^default/'
-      print -r -- ""; print -r -- "--- ifconfig $PHYS_IF"; /sbin/ifconfig "$PHYS_IF" 2>/dev/null
-      print -r -- ""; print -r -- "--- scutil --dns (first resolvers)"; /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/sed -n '1,/^resolver #3/p'
-      print -r -- ""; print -r -- "--- scutil --proxy"; /usr/sbin/scutil --proxy 2>/dev/null
+      print -r -- ""; print -r -- "--- ifconfig $PHYS_IF"; /sbin/ifconfig "$PHYS_IF" 2>/dev/null | { [[ "$HIDE_IPV6" == true ]] && /usr/bin/grep -v 'inet6 ' || /bin/cat; }
+      print -r -- ""; print -r -- "--- scutil --dns (first resolvers)"; lim 5 /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/sed -n '1,/^resolver #3/p' | { [[ "$HIDE_IPV6" == true ]] && /usr/bin/grep -vE 'nameserver\[[0-9]+\] : [0-9a-fA-F]*:' || /bin/cat; }
+      print -r -- ""; print -r -- "--- scutil --proxy"; lim 5 /usr/sbin/scutil --proxy 2>/dev/null
       [[ -s "$SCRATCH/nq.json" ]] && { print -r -- ""; print -r -- "--- networkQuality summary"; /usr/bin/grep -E '"(base_rtt|dl_throughput|ul_throughput|dl_responsiveness|ul_responsiveness|responsiveness|interface_name|test_endpoint)"' "$SCRATCH/nq.json"; }
     fi
   } > "$REPORT_FILE"
