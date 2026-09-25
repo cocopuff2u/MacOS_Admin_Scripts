@@ -156,7 +156,7 @@ SIMULATE=""             # Leave blank for a real test. Put a scenario name here 
                         #   healthy  not-connected  no-internet  captive-portal  packet-loss  outage
                         #   ping-blocked  slow-dns  bufferbloat  slow-speed  weak-wifi  2ghz  vpn
                         #   broken-ipv6  router-bottleneck  isp-problem  clock-skew  proxy
-                        #   slow-ethernet  wifi-drops  bandwidth-hog  mdm-unreachable  all-bad
+                        #   slow-ethernet  wifi-drops  bandwidth-hog  mdm-unreachable  root-details  all-bad
 
 # RESULTS FILE (optional) ---------------------------------------------------
 SAVE_JSON=false                            # true = also save the results as JSON (has to run as root):
@@ -179,7 +179,7 @@ cancelButton="Cancel"                      # button on the progress window that 
 ####################################################################################################
 
 emulate -L zsh
-setopt no_nomatch null_glob extended_glob
+setopt no_nomatch null_glob extended_glob typeset_silent   # typeset_silent: re-declaring a local never prints it
 zmodload zsh/datetime   # EPOCHREALTIME / EPOCHSECONDS
 
 # A temp folder for this run (ping output, results, the window scripts). It gets deleted at the end.
@@ -243,7 +243,12 @@ PING_COUNT=$(/usr/bin/awk -v s="$TEST_SECONDS" -v i="$PING_INTERVAL" 'BEGIN{prin
 # --- Helpers ----------------------------------------------------------------
 # Writes a timestamped line to the Jamf policy log, and to $logFile if we can (only as root).
 logWritable() { [[ -w "$logFile" ]] || { [[ ! -e "$logFile" && -w "${logFile:h}" ]]; }; }
-logMe() { local l="$(/bin/date '+%Y-%m-%d %H:%M:%S') [$1] ${2}"; print -r -- "$l"; logWritable && print -r -- "$l" >> "$logFile"; return 0; }
+# Looks like:  22:25:10  STEP    Speed        ↓ 35 Mbps · ↑ 47 Mbps · bufferbloat D   (15.4s)
+logMe() { local l="$(/bin/date '+%H:%M:%S')  ${(r:6:)1}  ${2}"; print -r -- "$l"; logWritable && print -r -- "$l" >> "$logFile"; return 0; }
+logLine() { print -r -- "$1"; logWritable && print -r -- "$1" >> "$logFile"; return 0; }   # a plain line, no time/level
+# the step log: name padded so the details line up, plus how long it took
+logStep() { logMe STEP "${(r:16:)1}$2${3:+   ($3)}"; }
+last_timing() { print -r -- "${${TIMINGS[-1]}#* }s"; }
 as_esc() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; print -r -- "${s//$'\n'/\\n}"; }   # makes text safe to drop into the JavaScript
 clean() { local s="${1//$'\t'/ }"; print -r -- "${s//$'\n'/ }"; }                        # strips tabs/newlines so they don't break the results file
 
@@ -311,6 +316,10 @@ device_serial() {
   /usr/sbin/ioreg -c IOPlatformExpertDevice -d 2 2>/dev/null \
     | /usr/bin/awk -F'"' '/IOPlatformSerialNumber/{print $4; exit}'
 }
+
+# How many items are in a comma list like "3,9,21" ("-" or blank = 0). Done as a real list, because
+# ${#...} on a one-item result counts characters instead (ping "12" would count as 2).
+count_list() { [[ -z "$1" || "$1" == "-" ]] && { print 0; return }; local -a z; z=(${(s:,:)1}); print ${#z}; }
 
 # Math helpers (zsh isn't great with decimals, so awk does it)
 calc() { /usr/bin/awk "BEGIN{printf \"%.1f\", $1}" 2>/dev/null; }
@@ -518,7 +527,7 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
     detail.setStringValue(L[2]||""); }
    // One-off results wait in line and each stays up long enough to read. Live numbers fill in between.
    var F=rd(FACTS).split("\n").filter(function(x){return x.length;});
-   if(cur.step>=5 && F.length>factIdx+1){ factIdx=F.length-1; holdUntil=0; }   // at the end, skip straight to the score
+   if(cur.step>=5 && F.length>factIdx){ factIdx=F.length-1; holdUntil=0; }     // at the end, show the score right away
    if(F.length>factIdx && now()>=holdUntil){
     var f=F[factIdx++].split("\t"); showMetric(f[0],f[1],f[2],"",false);
     holdUntil=now()+((F.length-factIdx)>1?HOLD_BUSY:HOLD); lastLive="";
@@ -811,14 +820,15 @@ lookup_public_ip() {
 # Otherwise we ask CoreWLAN directly. macOS hides the network name unless we're root.
 wifi_info() {
   WIFI_SSID=""; WIFI_RSSI=""; WIFI_NOISE=""; WIFI_TX=""; WIFI_CH=""; WIFI_BAND=""; WIFI_WIDTH=""; WIFI_PHY=""; WIFI_SEC=""
-  WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""
+  WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""; WIFI_CCA_N=""
   local out ch
   if (( amRoot )); then
-    out=$(/usr/bin/wdutil info 2>/dev/null | /usr/bin/awk '/^WIFI/{f=1;next} f&&/^[A-Z][A-Z ]+$/{exit} f')
+    out=$(${WDUTIL:-/usr/bin/wdutil} info 2>/dev/null | /usr/bin/awk '/^WIFI/{f=1;next} f&&/^[A-Z][A-Z ]+$/{exit} f')
     kv() { print -r -- "$out" | /usr/bin/awk -F' : ' -v k="$1" '{g=$1; gsub(/^ +| +$/,"",g)} g==k{sub(/^ +/,"",$2); print $2; exit}'; }
     WIFI_SSID=$(kv SSID); WIFI_RSSI=$(kv RSSI); WIFI_NOISE=$(kv Noise); WIFI_TX=$(kv "Tx Rate")
     WIFI_PHY=$(kv "PHY Mode"); WIFI_SEC=$(kv Security); ch=$(kv Channel)          # looks like 5g153/80 (band, channel, width)
     WIFI_BSSID=$(kv BSSID); WIFI_MCS=$(kv "MCS Index"); WIFI_NSS=$(kv NSS); WIFI_CCA=$(kv CCA)
+    WIFI_CCA_N="${WIFI_CCA%%[^0-9]*}"                                            # "34 %" -> 34
     [[ "$WIFI_BSSID" == *redacted* ]] && WIFI_BSSID=""
     WIFI_RSSI="${WIFI_RSSI%% *}"; WIFI_NOISE="${WIFI_NOISE%% *}"; WIFI_TX="${WIFI_TX%% *}"
     if [[ "$ch" == (#b)([0-9])g([0-9]##)/([0-9]##)* ]]; then
@@ -1318,7 +1328,7 @@ vpn_info() {
   # More detail on the connected VPN: what kind it is, the gateway on the inside of the tunnel, the
   # server's name, and for split tunnels, which networks and domains go through it.
   VPN_TYPE=""; VPN_TGW=""; VPN_TGW_MS=""; VPN_HOST=""; VPN_ROUTES=""; VPN_ROUTE_COUNT=0; VPN_DOMAINS=""
-  local tif="${${VPN_TUNNELS%%,*}%% *}" nc_line kind st
+  local tif="${${VPN_TUNNELS%%,*}%% *}" nc_line kind
   if [[ -n "$tif" ]]; then
     # A VPN set up in the Mac's own settings shows up in scutil, which knows the type and inside gateway
     nc_line=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/grep '(Connected)' | /usr/bin/head -1)
@@ -1446,7 +1456,7 @@ speed_cloudflare() {
 #   NHC_SIMULATE=weak-wifi,vpn ./Network_Health_Check.sh
 SIM_SCENARIOS=(healthy not-connected no-internet captive-portal packet-loss outage ping-blocked slow-dns
                bufferbloat slow-speed weak-wifi 2ghz vpn broken-ipv6 router-bottleneck isp-problem
-               clock-skew proxy slow-ethernet wifi-drops bandwidth-hog mdm-unreachable all-bad)
+               clock-skew proxy slow-ethernet wifi-drops bandwidth-hog mdm-unreachable root-details all-bad)
 
 simulate_run() {
   sim_sleep() { [[ "$ACTION_MODE" == verbose ]] && /bin/sleep "$1"; return 0; }   # silent mode doesn't need the pauses
@@ -1454,7 +1464,7 @@ simulate_run() {
   [[ "$sc" == all-bad ]] && sc="weak-wifi,packet-loss,outage,slow-dns,bufferbloat,slow-speed,vpn,broken-ipv6,clock-skew,proxy,wifi-drops,bandwidth-hog,mdm-unreachable"
   sim() { [[ ",$sc," == *",$1,"* ]]; }
   RUN_SUBTITLE="SIMULATION ($SIMULATE) · $RUN_SUBTITLE"
-  logMe INFO "SIMULATION MODE — scenario: $SIMULATE (nothing is actually measured)"
+  logMe INFO "SIMULATION - scenario: $SIMULATE (nothing is actually measured)"
 
   if sim not-connected; then
     sim_sleep 1
@@ -1474,7 +1484,7 @@ simulate_run() {
   IF_MAC="aa:bb:cc:dd:ee:ff"; IF_MTU=1500; IF_MEDIA="autoselect"; IPV6_ADDR=""; IPV6_NET=""; OTHER_IFS=""
   PROXY_DESC=""; NE_LIST=""; VPN_CONFIGS=""
   WIFI_SSID="Simulated-WiFi"; WIFI_RSSI=-55; WIFI_NOISE=-95; WIFI_TX=866; WIFI_CH=149; WIFI_BAND=5; WIFI_WIDTH=80
-  WIFI_PHY="802.11ax (Wi-Fi 6)"; WIFI_SEC="WPA2 Personal"; WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""
+  WIFI_PHY="802.11ax (Wi-Fi 6)"; WIFI_SEC="WPA2 Personal"; WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""; WIFI_CCA_N=""
   WIFI_NEARBY=12; WIFI_COCHAN=1; WIFI_COCHAN_STRONG=0; WS_MIN=-58; WS_AVG=-55; WS_MAX=-52; WS_TXMIN=780; WS_TXMAX=866; WS_CHANS=149
   NO_INTERNET=0; INET_METHOD="ICMP ping"; INET_LAT=18; INET_JIT=3; INET_LOSS=0; INET_LAG=18; REL_PCT=100; OUTAGE_EVENTS=0; OUTAGE_LONGEST_S=0
   ROUTER_OK=1; R_METHOD="ping"; R_LAT=3; R_JIT=1; R_LOSS=0; R_LAG=3; ISP_HOP="203.0.113.1"; ISP_HOP_MS=9
@@ -1504,6 +1514,10 @@ simulate_run() {
   sim router-bottleneck && { R_LAT=118; R_JIT=45; R_LAG=140; R_LOSS=4; INET_LAT=150; INET_LAG=170; INET_JIT=48; }
   sim isp-problem && { R_LAT=3; R_LAG=3; ISP_HOP_MS=150; INET_LAT=185; INET_LAG=190; INET_JIT=12; }
   sim clock-skew  && { CLOCK_OFF_MS=312000; }
+  # root-details: fills in everything that only shows up when the script runs as root (Jamf),
+  # so those rows and findings get tested without needing sudo
+  sim root-details && { WIFI_SSID="CorpWiFi"; WIFI_BSSID="4c:5e:0c:11:22:33"; WIFI_MCS=9; WIFI_NSS=2; WIFI_CCA="62 %"; WIFI_CCA_N=62
+                        c0=(0 0 1000 10); c1=(2 1 2500 70); MDM_URL="https://example.jamfcloud.com/mdm/ServerURL"; }
   sim wifi-drops  && { HIST_DROPS=5; HIST_LAST=$(( EPOCHSECONDS - 2400 )); HIST_LAST_DUR=48; HIST_LONGEST=190; }
   sim bandwidth-hog && { APP_ROWS=("OneDrive"$'\t'"38.5" "iCloud Drive (bird)"$'\t'"4.2" "Slack"$'\t'"0.1"); APP_TOP="OneDrive"; APP_TOP_MBPS=38.5; DL_MBPS=18; }
   sim mdm-unreachable && { MDM_REACH=no; MDM_MS=""; JAMF_HEALTH="no answer"; APNS_5223=""; APNS_443=""; }
@@ -1515,7 +1529,10 @@ simulate_run() {
     CAPTIVE="unknown"; sim captive-portal && CAPTIVE="detected"
   fi
 
-  LOSS_EFF=$INET_LOSS; INET_LOST_N=$(( ${INET_LOSS%.*} > 0 || ${INET_LOSS#*.} > 0 ? 3 : 0 )); ONE_TARGET_LOSS=""
+  # turn the loss % into a whole number of lost pings, then make the % match that count exactly
+  INET_LOST_N=$(r0 "$(calc "$INET_LOSS*$PING_COUNT/100")"); (( INET_LOST_N == 0 )) && [[ "$INET_LOSS" != (0|0.0) ]] && INET_LOST_N=1
+  (( ! NO_INTERNET )) && INET_LOSS=$(calc "$INET_LOST_N*100/$PING_COUNT")
+  LOSS_EFF=$INET_LOSS; (( INET_LOST_N <= 1 )) && LOSS_EFF=0; ONE_TARGET_LOSS=""
 
   # Build the detail rows from the made-up numbers -----------------------------------
   if (( NO_INTERNET )); then
@@ -1655,7 +1672,7 @@ run_tests() {
     simulate_run || return 1
   else
   if ! detect_connection; then
-    logMe ERROR "No active network connection found."
+    logMe ERROR "No Wi-Fi or Ethernet connection found."
     NET_SCORE=0; RESP_SCORE=0; REL_SCORE=0
     HEADLINE="Not Connected"; SUBHEADLINE="This Mac isn't connected to a network. Turn on Wi-Fi or plug in Ethernet, then run the check again."
     finding bad "No active Wi-Fi or Ethernet connection was found."
@@ -1673,8 +1690,8 @@ run_tests() {
       fact "$s:$WIFI_RSSI dBm" "Wi-Fi signal  ·  ${WIFI_BAND:+$WIFI_BAND GHz  ·  }${WIFI_CH:+channel $WIFI_CH}"
     fi
   fi
-  logMe INFO "Interface $PHYS_IF ($PORT_NAME) ip=$LOCAL_IP gw=$GATEWAY vpn=$VPN_ACTIVE public=$PUB_IP"
   check_cancel; mark connect
+  logStep "Connection" "$CONN_TYPE ($PHYS_IF) · IP $LOCAL_IP · router ${GATEWAY:-none} · VPN $( (( VPN_ACTIVE )) && print -r -- "$VPN_NAME" || print off)${PUB_IP:+ · public IP $PUB_IP}" "$(last_timing)"
 
   # 2. Responsiveness: start the pings, plus traceroute and Wi-Fi readings in the background --------
   local router_file="$SCRATCH/ping_router.txt" trace_file="$SCRATCH/trace.txt" wifi_file="$SCRATCH/wifi_samples.txt"
@@ -1734,7 +1751,7 @@ run_tests() {
   # pings, that's the server limiting ping (common on VPNs), not the user's connection.
   local min_loss=999 min_lag=999999 max_loss=0 lossy="" min_lost_n=0
   local -a T_LAT T_JIT T_LOSS T_LAG
-  track() { local n=0; local -a lz; [[ "$P_LOST" != "-" ]] && { lz=(${(s:,:)P_LOST}); n=${#lz}; }   # count the lost pings (as a list, not characters)
+  track() { local n=$(count_list "$P_LOST")
             T_LAT+=($P_AVG); T_JIT+=($P_JIT); T_LOSS+=($P_LOSS); T_LAG+=($P_LAG)
             (( P_LOSS < min_loss )) && { min_loss=$P_LOSS; min_lost_n=$n; }; (( P_LAG < min_lag )) && min_lag=$P_LAG
             (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
@@ -1819,15 +1836,16 @@ run_tests() {
   fi
 
   check_cancel; mark responsiveness
+  if (( NO_INTERNET )); then logStep "Responsiveness" "no internet - nothing answered" "$(last_timing)"
+  else logStep "Responsiveness" "lag $(ms $INET_LAG) · jitter $(ms $INET_JIT) · loss ${INET_LOSS}% · router $( (( ROUTER_OK )) && ms $R_LAT || print n/a) · $INET_METHOD" "$(last_timing)"; fi
 
   # 3. Websites, DNS, and the other quick checks -----------------------------------------
-  local code dns conn tls ttfb hv rip; local -a failed_sites
+  local code dns conn tls ttfb hv rip try; local -a failed_sites
   if (( ! NO_INTERNET )); then
     spin_status 2 "Testing websites & DNS" "Loading ${#WEB_TARGETS} common sites…" ${P_WEB[1]} ${P_WEB[2]} $(( ${#WEB_TARGETS} + 4 ))
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
       check_cancel
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
-      local try
       for try in 1 2; do     # try twice, so one random blip doesn't show up as a failed site
         read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
         [[ -n "$code" && "$code" != 000 ]] && break
@@ -1852,6 +1870,7 @@ run_tests() {
   misc_checks
   mgmt_info; vpn_info
   check_cancel; mark web_dns
+  logStep "Web & DNS" "$(( n_web )) of ${#WEB_TARGETS} sites loaded$( (( web_fail )) && print " (failed: ${(j:, :)failed_sites})") · first byte $(ms $WEB_TTFB) · your DNS ${DNS_CFG_AVG:-?} ms" "$(last_timing)"
 
   # 4. Speed ------------------------------------------------------------------------
   local engine="$SPEED_ENGINE"; (( NO_INTERNET )) && engine="off"
@@ -1865,6 +1884,7 @@ run_tests() {
     fi
     isnum "$DL_MBPS" && fact "c:↓ $(r0 $DL_MBPS)|w:    |p:↑ $(r0 ${UL_MBPS:-0})" "Mbps  ·  final result"
     mark speed
+    logStep "Speed" "$(isnum "$DL_MBPS" && print "↓ $(r0 $DL_MBPS) Mbps · ↑ $(r0 ${UL_MBPS:-0}) Mbps$(isnum "$LOADED_MS" && isnum "$IDLE_MS" && print " · lag when busy +$(r0 "$(calc "$LOADED_MS-$IDLE_MS")") ms") · $SPEED_SERVER" || print "failed")" "$(last_timing)"
   fi
   c1=($(counters))
   fi   # done with the real tests (simulation mode fills in the same things itself)
@@ -2009,7 +2029,7 @@ run_tests() {
     [[ "$WS_CHANS" == */* ]] && finding ok "Wi-Fi switched channels during the test ($WS_CHANS) — roaming between access points or bands."
     [[ "$WIFI_BAND" == "2.4" ]] && finding ok "Connected on 2.4 GHz — slower and more crowded than 5/6 GHz."
     isnum "$WIFI_COCHAN_STRONG" && (( WIFI_COCHAN_STRONG >= 4 )) && finding ok "$WIFI_COCHAN_STRONG other strong access points share Wi-Fi channel $WIFI_CH — interference likely."
-    isnum "${WIFI_CCA%%[^0-9]*}" && (( ${WIFI_CCA%%[^0-9]*} >= 50 )) && finding ok "Wi-Fi channel is busy ${WIFI_CCA} of the time — congestion."
+    isnum "$WIFI_CCA_N" && (( WIFI_CCA_N >= 50 )) && finding ok "Wi-Fi channel is busy ${WIFI_CCA} of the time — congestion."
   fi
   if isnum "$HIST_DROPS" && (( HIST_DROPS > 0 )); then
     finding "$( (( HIST_DROPS >= 3 )) && print bad || print ok)" "Your connection dropped $HIST_DROPS time$( (( HIST_DROPS > 1 )) && print s) in the last 24 hours while the Mac was awake (last at $(when_text $HIST_LAST), down $(dur_text $HIST_LAST_DUR))."
@@ -2181,7 +2201,7 @@ run_tests() {
     section "Wi-Fi Details" "antenna.radiowaves.left.and.right"
     [[ -n "$WIFI_BSSID" ]] && row "Access point (BSSID)" "$WIFI_BSSID" na
     [[ -n "$WIFI_MCS" ]] && row "MCS / spatial streams" "MCS $WIFI_MCS${WIFI_NSS:+ · $WIFI_NSS streams}" na
-    [[ -n "$WIFI_CCA" ]] && row "Channel utilization (CCA)" "$WIFI_CCA" "$( (( ${WIFI_CCA%%[^0-9]*:-0} >= 50 )) && print ok || print na)"
+    [[ -n "$WIFI_CCA" ]] && row "Channel utilization (CCA)" "$WIFI_CCA" "$(isnum "$WIFI_CCA_N" && (( WIFI_CCA_N >= 50 )) && print ok || print na)"
     isnum "$WIFI_NEARBY" && row "Nearby access points (last scan)" "$WIFI_NEARBY radios seen · $WIFI_COCHAN on channel $WIFI_CH ($WIFI_COCHAN_STRONG strong)" "$( (( WIFI_COCHAN_STRONG >= 4 )) && print ok || print na)"
     [[ -n "$WS_CHANS" ]] && row "Channel(s) during test" "$WS_CHANS" "$([[ $WS_CHANS == */* ]] && print ok || print na)"
   fi
@@ -2290,11 +2310,17 @@ build_report() {
 # Main
 #
 ####################################################################################################
-logMe INFO "============================================================"
-logMe INFO "Network Health Check — mode=${ACTION_MODE}; speed=${SPEED_ENGINE}; duration=${TEST_SECONDS}s; user=${targetUser}; running as $(/usr/bin/id -un)"
-
-# Simulation: "list" just prints the scenarios, and a typo in a scenario name stops the script.
+# "list" just prints the simulation scenarios and quits
 if [[ "$SIMULATE" == list ]]; then print -r -- "Scenarios: ${SIM_SCENARIOS[*]}  (combine with commas)"; exit 0; fi
+
+# Test hook: NHC_LIB=1 loads all the functions above and stops here, so tests can call them directly.
+[[ -n "$NHC_LIB" ]] && return 0 2>/dev/null
+
+logLine ""
+logLine "==================== Network Health Check $SCRIPT_VERSION  ·  $(/bin/date '+%Y-%m-%d %H:%M:%S') ===================="
+logMe INFO "Mode: $ACTION_MODE$([[ $QUICK_MODE == true ]] && print " (quick)") · speed test: $SPEED_ENGINE · ping for ${TEST_SECONDS}s · user: $targetUser · running as: $(/usr/bin/id -un)"
+
+# Simulation: a typo in a scenario name stops the script.
 if [[ -n "$SIMULATE" ]]; then
   for _s in ${(s:,:)SIMULATE}; do
     (( ${SIM_SCENARIOS[(Ie)$_s]} )) || { logMe ERROR "Unknown simulation scenario '$_s'. Scenarios: ${SIM_SCENARIOS[*]}"; exit 1; }
@@ -2308,9 +2334,16 @@ while true; do
   run_tests
   build_report
   kill_spinner
-  logMe INFO "Step timings: ${TIMINGS_TEXT:-n/a}"
   write_json
-  logMe INFO "Score $NET_SCORE ($(band_label $NET_SCORE)) — resp=$RESP_SCORE rel=$REL_SCORE speed=${SPEED_SCORE:-skipped} lag=${INET_LAG} loss=${INET_LOSS}% dl=${DL_MBPS:-—} ul=${UL_MBPS:-—}"
+  # Result block: the score, then every finding (problems first)
+  logMe RESULT "Score $NET_SCORE/100 ($(band_label $NET_SCORE)) - $HEADLINE · responsiveness $RESP_SCORE · reliability $REL_SCORE · speed ${SPEED_SCORE:-skipped}"
+  for _k in bad ok na good; do
+    while IFS=$'\t' read -r _tag _txt; do [[ "$_tag" == "$_k" ]] || continue
+      case $_tag in bad) _tag="FAIL";; ok) _tag="WARN";; good) _tag="OK  ";; *) _tag="INFO";; esac
+      logLine "                  $_tag  $_txt"
+    done < "$FIND_FILE"
+  done
+  logMe INFO "Step timings: ${TIMINGS_TEXT:-n/a}"
 
   if [[ "$ACTION_MODE" == "silent" ]]; then
     /bin/cat "$REPORT_FILE"
@@ -2319,7 +2352,7 @@ while true; do
   fi
 
   choice=$(show_results)
-  logMe INFO "User chose: ${choice:-done}"
+  logMe INFO "User clicked: $(case $choice in again) print "Run Again";; save) print "Save Report";; *) print "Done";; esac)"
   case "$choice" in
     again) continue ;;
     save)
