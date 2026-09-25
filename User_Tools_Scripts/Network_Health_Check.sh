@@ -79,23 +79,17 @@
 #               findings, "For IT" details, live progress window with a Cancel button, results window
 #               with Save Report / Run Again, verbose/silent/quick modes, simulated scenarios for
 #               testing, step timings, and optional JSON results. - @cocopuff2u
-# 1.1 9/24/26 - Accuracy fixes - traceroute hop times now use every reply (some were being skipped),
-#               your own DNS servers are labeled right even if they're Google/Cloudflare, shows both
-#               the private Wi-Fi MAC and the real hardware MAC, VPN connection status reads right,
-#               the "nearby access points" count is accurate now, the Wi-Fi signal readings don't
-#               get cut off at the end of the test, and a website gets one retry before it's
-#               reported as failed. - @cocopuff2u
-# 1.2 9/24/26 - Connection drops from the last 24 hours (skips the ones caused by sleep), which apps
-#               are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks that it
-#               can reach the MDM server and Apple Push, and VPN detection (which apps are installed or
-#               running, whether a tunnel is up, full vs split tunnel, the VPN server and how far away
-#               it is, even if it ignores ping). For a connected VPN it also shows the type (L2TP,
-#               IKEv2, app...), the gateway inside the tunnel and how fast it answers, the server's
-#               name, the tunnel MTU, and for split tunnels which networks/domains go through it. Flags
-#               when the VPN itself is adding the delay. Works with built-in VPNs (L2TP, IKEv2, IPsec)
-#               and VPN apps (tested live with an L2TP VPN and ProtonVPN/WireGuard). Faster, more exact
-#               path MTU check. New test
-#               scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
+# 1.1 9/24/26 - Testing + fixes (in progress) - Accuracy fixes: traceroute hops use every reply,
+#               your own DNS servers are labeled right, shows the private Wi-Fi MAC and the hardware
+#               MAC, VPN status reads right, accurate nearby access point count, Wi-Fi readings don't
+#               get cut off, a failed website gets one retry, and packet loss that only one server
+#               shows (usually that server limiting ping) no longer counts against the connection.
+#               New: connection drops from the last 24 hours (skips the ones caused by sleep), which
+#               apps are using the network, MDM detection (Jamf, Intune, Kandji, etc.) with checks it
+#               can reach the MDM server and Apple Push, and full VPN details for built-in VPNs and VPN
+#               apps (type, tunnel, full vs split, gateway, server, DNS) - tested live with an L2TP VPN
+#               and ProtonVPN/WireGuard. Clearer labels, a legend in the report, and a faster path MTU
+#               check. New test scenarios: wifi-drops, bandwidth-hog, mdm-unreachable. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -1084,9 +1078,10 @@ apps_parse() {
     [[ -z "$APP_TOP" ]] && { APP_TOP="$name"; APP_TOP_MBPS="$mbps"; }
   done < <(/usr/bin/awk -F, '/^,/ {blk++; next} blk==2 && NF>=3 {
       n=$1; sub(/\.[0-9]+$/,"",n)
-      if (n ~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp|zsh|awk)$/) next
+      if (n ~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp|zsh|awk|mDNSResponder)$/) next
+      if (tolower(n) ~ /vpn|wireguard|pangps|globalprotect|zscaler|warp|forti|tailscale|netskope|twingate|openvpn|anyconnect|secureclient|nesessionmanager/) next
       b[n]+=$2+$3 }
-    END { for (n in b) if (b[n] > 0) printf "%s\t%.2f\n", n, b[n]*8/3/1000000 }' "$SCRATCH/nettop.txt" | /usr/bin/sort -t$'\t' -k2 -rn | /usr/bin/head -5)
+    END { for (n in b) if (b[n]*8/3 >= 100000) printf "%s\t%.2f\n", n, b[n]*8/3/1000000 }' "$SCRATCH/nettop.txt" | /usr/bin/sort -t$'\t' -k2 -rn | /usr/bin/head -5)
   APPS_TOTAL_MBPS=$(/usr/bin/awk -F, '/^,/ {blk++; next} blk==2 && NF>=3 { n=$1; sub(/\.[0-9]+$/,"",n); if (n !~ /^(ping|traceroute|curl|osascript|nettop|dig|networkQuality|sntp)$/) t+=$2+$3 } END { printf "%.2f", t*8/3/1000000 }' "$SCRATCH/nettop.txt")
 }
 rate_text() { (( $1 >= 1 )) && print -r -- "$(r0 $1) Mbps" || print -r -- "$(r0 "$(calc "$1*1000")") Kbps"; }
@@ -1490,7 +1485,7 @@ simulate_run() {
   mark responsiveness
   (( NO_INTERNET )) || fact "$(lag_code $INET_LAG):$(r0 $INET_LAG) ms" "internet lag  ·  jitter $(ms $INET_JIT)  ·  ${INET_LOSS}% loss"
   spin_status 2 "Testing websites & DNS" "Simulated…" ${P_WEB[1]} ${P_WEB[2]} 3
-  (( NO_INTERNET )) || fact "g:${#WEB_TARGETS} of ${#WEB_TARGETS}" "websites loaded"
+  (( NO_INTERNET )) || fact "g:All ${#WEB_TARGETS} loaded" "websites"
   check_cancel; sim_sleep 2; mark web_dns
   if [[ "$SPEED_ENGINE" != off ]] && (( ! NO_INTERNET )); then
     spin_status 3 "Testing download & upload speed" "Simulated…" ${P_SPD[1]} ${P_SPD[2]} 6
@@ -1508,7 +1503,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.2"
+SCRIPT_VERSION="1.1"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
@@ -1669,12 +1664,16 @@ run_tests() {
     kill $wifi_pid 2>/dev/null; wait $wifi_pid 2>/dev/null
   fi
 
-  # Crunch the ping results for each internet target
+  # Crunch the ping results for each internet target. We keep track of the lowest loss and lag too:
+  # real packet loss on the connection shows up on EVERY target, so if only one server is dropping
+  # pings, that's the server limiting ping (common on VPNs), not the user's connection.
+  local min_loss=999 min_lag=999999 max_loss=0 lossy=""
+  track() { (( P_LOSS < min_loss )) && min_loss=$P_LOSS; (( P_LAG < min_lag )) && min_lag=$P_LAG; (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
   INET_METHOD="ICMP ping"
   for (( i=1; i<=${#INTERNET_TARGETS}; i++ )); do
     ping_stats "${inet_files[$i]}"
     if (( P_RECV > 0 )); then
-      (( n_ok++ )); ok_lists+=("$P_LOST")
+      (( n_ok++ )); ok_lists+=("$P_LOST"); track "${INTERNET_TARGETS[$i]}"
       sum_lat=$(calc "$sum_lat+$P_AVG"); sum_jit=$(calc "$sum_jit+$P_JIT"); sum_loss=$(calc "$sum_loss+$P_LOSS"); sum_lag=$(calc "$sum_lag+$P_LAG")
       tgt_rows+=("${INTERNET_TARGETS[$i]}"$'\t'"$(ms $P_AVG) avg ($(ms $P_MIN)–$(ms $P_MAX)) · jitter $(ms $P_JIT) · ${P_LOSS}% loss"$'\t'"$(lag_status $P_LAG)")
     else
@@ -1691,7 +1690,7 @@ run_tests() {
       spin_status 1 "Measuring responsiveness" "Ping is blocked — timing HTTPS connections to ${host#https://}…" ${P_RSP[2]} ${P_WEB[1]} $TEST_SECONDS
       http_probe "$host" "$f"; ping_stats "$f"
       if (( P_RECV > 0 )); then
-        (( n_ok++ )); ok_lists+=("$P_LOST")
+        (( n_ok++ )); ok_lists+=("$P_LOST"); track "${host#https://}"
         sum_lat=$(calc "$sum_lat+$P_AVG"); sum_jit=$(calc "$sum_jit+$P_JIT"); sum_loss=$(calc "$sum_loss+$P_LOSS"); sum_lag=$(calc "$sum_lag+$P_LAG")
         tgt_rows+=("${host#https://}"$'\t'"$(ms $P_AVG) · jitter $(ms $P_JIT) · ${P_LOSS}% fail"$'\t'"$(lag_status $P_LAG)")
       else
@@ -1704,7 +1703,9 @@ run_tests() {
   if (( n_ok == 0 )); then
     NO_INTERNET=1; INET_LAT="-"; INET_JIT="-"; INET_LOSS=100; INET_LAG="-"; REL_PCT=0; OUTAGE_LONGEST_S=$TEST_SECONDS; OUTAGE_EVENTS=1
   else
-    INET_LAT=$(calc "$sum_lat/$n_ok"); INET_JIT=$(calc "$sum_jit/$n_ok"); INET_LOSS=$(calc "$sum_loss/$n_ok"); INET_LAG=$(calc "$sum_lag/$n_ok")
+    INET_LAT=$(calc "$sum_lat/$n_ok"); INET_JIT=$(calc "$sum_jit/$n_ok"); INET_LOSS=$min_loss; INET_LAG=$min_lag
+    # remember if one server dropped a lot more than the rest, so we can explain it
+    ONE_TARGET_LOSS=""; (( n_ok > 1 && max_loss >= 5 && max_loss - min_loss >= 5 )) && ONE_TARGET_LOSS="$lossy $max_loss"
     reliability_calc "${(j:;:)ok_lists}"
     fact "$(lag_code $INET_LAG):$(r0 $INET_LAG) ms" "internet lag  ·  jitter $(ms $INET_JIT)  ·  ${INET_LOSS}% loss"
   fi
@@ -1741,7 +1742,7 @@ run_tests() {
   check_cancel; mark responsiveness
 
   # 3. Websites, DNS, and the other quick checks -----------------------------------------
-  local code dns conn tls ttfb hv rip
+  local code dns conn tls ttfb hv rip; local -a failed_sites
   if (( ! NO_INTERNET )); then
     spin_status 2 "Testing websites & DNS" "Loading ${#WEB_TARGETS} common sites…" ${P_WEB[1]} ${P_WEB[2]} $(( ${#WEB_TARGETS} + 4 ))
     for (( i=1; i<=${#WEB_TARGETS}; i++ )); do
@@ -1749,7 +1750,7 @@ run_tests() {
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
       local try
       for try in 1 2; do     # try twice, so one random blip doesn't show up as a failed site
-        read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 10 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
+        read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 6 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
         [[ -n "$code" && "$code" != 000 ]] && break
       done
       if [[ -n "$code" && "$code" != 000 ]] && isnum "$ttfb"; then
@@ -1759,10 +1760,11 @@ run_tests() {
         web_rows+=("$host"$'\t'"first byte $(ms $ttfb) · DNS $(ms $dns) · TLS done $(ms $tls) · HTTP/$hv"$'\t'"$s")
         web_spark+=($ttfb); live_metric "$(stat_code $s):$(r0 $ttfb) ms" "first byte  ·  $host" "${(j:,:)web_spark}"
       else
-        (( web_fail++ )); web_rows+=("$host"$'\t'"Failed to load"$'\t'"bad")
+        (( web_fail++ )); web_rows+=("$host"$'\t'"Failed to load"$'\t'"bad"); failed_sites+=("$host")
       fi
     done
-    fact "$( (( web_fail )) && print r || print g):$(( ${#WEB_TARGETS} - web_fail )) of ${#WEB_TARGETS}" "websites loaded"
+    if (( web_fail )); then fact "g:$(( ${#WEB_TARGETS} - web_fail )) loaded|w:  ·  |r:$web_fail failed" "websites  ·  ${(j:, :)failed_sites} didn't load"
+    else fact "g:All ${#WEB_TARGETS} loaded" "websites"; fi
     spin_status 2 "Testing websites & DNS" "Timing DNS servers, checking IPv6, MTU and clock…" ${P_WEB[1]} ${P_WEB[2]} 4
     dns_tests
     [[ -n "$DNS_CFG_AVG" && "$DNS_CFG_AVG" != 9999 ]] && fact "$( (( DNS_CFG_AVG > 150 )) && print r || { (( DNS_CFG_AVG > 60 )) && print o || print g; })":"$DNS_CFG_AVG ms" "your DNS server lookup time"
@@ -1873,8 +1875,11 @@ run_tests() {
     elif (( INET_JIT > 30 )); then
       finding ok "High jitter ($(ms $INET_JIT)) — response times swing a lot, typical of busy or weak Wi-Fi. Calls may sound choppy."
     fi
+    if [[ -n "$ONE_TARGET_LOSS" ]]; then
+      finding na "${ONE_TARGET_LOSS% *} ignored ${ONE_TARGET_LOSS#* }% of pings, but the other server didn't. That's the server limiting ping (common on VPNs), not your connection."
+    fi
     (( OUTAGE_EVENTS > 0 )) && finding bad "Connection went unresponsive ${OUTAGE_EVENTS}× during the test (longest ${OUTAGE_LONGEST_S}s)."
-    (( web_fail > 0 )) && finding bad "$web_fail of ${#WEB_TARGETS} test websites failed to load."
+    (( web_fail > 0 )) && finding bad "$( (( web_fail == 1 )) && print "${failed_sites[1]} didn't load." || print "$web_fail of ${#WEB_TARGETS} test websites didn't load (${(j:, :)failed_sites}).")"
     if [[ -n "$DNS_CFG_AVG" ]] && (( DNS_CFG_AVG > 80 )) && [[ -n "$DNS_PUB_BEST" ]] && (( DNS_CFG_AVG > 2 * DNS_PUB_BEST )); then
       finding ok "Your DNS server is slow ($( (( DNS_CFG_AVG == 9999 )) && print "not answering" || print "$DNS_CFG_AVG ms")) — public DNS answers in $DNS_PUB_BEST ms. Every new site starts slower."
     fi
@@ -1939,8 +1944,8 @@ run_tests() {
   section "Connection" "network"
   row "Connection type" "$CONN_TYPE ($PHYS_IF)" na
   [[ "$CONN_TYPE" == "Wi-Fi" ]] && row "Network name" "$WIFI_SSID" na
-  [[ -n "$PUB_ISP" ]] && row "Internet provider" "$PUB_ISP${PUB_LOC:+ · $PUB_LOC}" na
-  row "VPN" "$( (( VPN_ACTIVE )) && print -r -- "$VPN_NAME" || print Off)" "$( (( VPN_ACTIVE )) && print ok || print na)"
+  [[ -n "$PUB_ISP" ]] && row "$( (( VPN_ACTIVE )) && print "Internet provider (VPN's)" || print "Internet provider")" "$PUB_ISP${PUB_LOC:+ · $PUB_LOC}" na
+  row "VPN" "$( (( VPN_ACTIVE )) && print -r -- "$VPN_NAME (on)" || print Off)" na
   row "Video calls" "$VIDEO_TEXT" "$VIDEO_STATUS"
 
   if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
@@ -1958,6 +1963,8 @@ run_tests() {
       row "Signal" "Unavailable" na
     fi
     [[ -n "$WIFI_CH" ]] && row "Band / channel" "${WIFI_BAND} GHz · channel $WIFI_CH · ${WIFI_WIDTH} MHz wide" "$([[ $WIFI_BAND == 2.4 ]] && print ok || print good)"
+    case $WIFI_PHY in 11ax) WIFI_PHY="802.11ax (Wi-Fi 6)";; 11ac) WIFI_PHY="802.11ac (Wi-Fi 5)";; 11n) WIFI_PHY="802.11n (Wi-Fi 4)";; 11be) WIFI_PHY="802.11be (Wi-Fi 7)";; 11[abg]) WIFI_PHY="802.$WIFI_PHY";; esac
+    [[ "$WIFI_SEC" == (None|Open|none) ]] && WIFI_SEC="None (open network, no password)"
     [[ -n "$WIFI_PHY" ]] && row "Wi-Fi standard" "$WIFI_PHY" na
     if isnum "$WIFI_TX"; then s=good; (( WIFI_TX < 200 )) && s=ok; (( WIFI_TX < 50 )) && s=bad
       row "Link rate (Tx)" "$(r0 $WIFI_TX) Mbps$(isnum "$WS_TXMIN" && [[ "$WS_TXMIN" != "$WS_TXMAX" ]] && print " (ranged $WS_TXMIN–$WS_TXMAX during test)")" $s; fi
@@ -1986,8 +1993,9 @@ run_tests() {
   else
     s=good; (( DL_MBPS < 50 )) && s=ok; (( DL_MBPS < 10 )) && s=bad; row "Download" "$(r0 $DL_MBPS) Mbps" $s
     s=good; (( ${UL_MBPS:-0} < 10 )) && s=ok; (( ${UL_MBPS:-0} < 3 )) && s=bad; row "Upload" "$(r0 ${UL_MBPS:-0}) Mbps" $s
-    isnum "$IDLE_MS" && row "Latency (idle)" "$(ms $IDLE_MS)" "$(lag_status $IDLE_MS)"
-    isnum "$LOADED_MS" && row "Latency (under load)" "$(ms $LOADED_MS)" "$(lag_status $LOADED_MS)"
+    # These come from the speed test and time full web requests, so they're higher than a plain ping
+    isnum "$IDLE_MS" && row "Web request time (idle)" "$(ms $IDLE_MS)" na
+    isnum "$LOADED_MS" && row "Web request time (busy)" "$(ms $LOADED_MS)" "$(lag_status $LOADED_MS)"
     if [[ -n "$BLOAT_GRADE" ]]; then
       s=good; [[ $BLOAT_GRADE == C ]] && s=ok; [[ $BLOAT_GRADE == [DF] ]] && s=bad
       row "Bufferbloat" "Grade $BLOAT_GRADE  (+$(ms $BLOAT_MS) when busy)" $s
@@ -2049,17 +2057,19 @@ run_tests() {
   row "Apple enrollment service" "$([[ $APPLE_ENROLL == yes ]] && print Reachable || print "Can't reach deviceenrollment.apple.com")" "$([[ $APPLE_ENROLL == yes ]] && print good || print ok)"
   [[ "$MDM_ENROLLED" == Yes* ]] && (( ! amRoot )) && row "Note" "Run as root (Jamf) to see the MDM server address" na
 
+  if [[ -n "$VPN_APPS$VPN_CONFIGS$VPN_SERVERS$VPN_TUNNELS" ]]; then
   section "VPN" "lock.shield"
   row "VPN apps" "${VPN_APPS:-None found}" na
-  row "Mac VPN connections" "${VPN_CONFIGS:-None set up}" "$([[ $VPN_CONFIGS == *"(Connected)"* ]] && print ok || print na)"
+  row "Mac VPN connections" "${VPN_CONFIGS:-None set up}" na
   [[ -n "$VPN_TYPE" ]] && row "Connected VPN" "$VPN_TYPE" na
-  row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" "$([[ -n $VPN_TUNNELS ]] && print ok || print na)"
+  row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" na
   [[ -n "$VPN_TGW" ]] && row "Tunnel gateway (inside the VPN)" "$VPN_TGW$(isnum "$VPN_TGW_MS" && print " · $VPN_TGW_MS ms" || print " · doesn't answer")" "$(isnum "$VPN_TGW_MS" && { (( VPN_TGW_MS > 150 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · ${VPN_GW_NOTE:-doesn't answer ping or traceroute}")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
   [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
   [[ -n "$VPN_DOMAINS" ]] && row "Domains sent to the VPN's DNS" "$VPN_DOMAINS" na
   (( VPN_ROUTE_COUNT )) && row "Networks sent through the VPN" "$VPN_ROUTES ($VPN_ROUTE_COUNT total)" na
+  fi
 
   if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
     section "Wi-Fi Details" "antenna.radiowaves.left.and.right"
@@ -2138,6 +2148,8 @@ build_report() {
     print -r -- "NETWORK SCORE: $NET_SCORE / 100  ($(band_label $NET_SCORE)) — $HEADLINE"
     print -r -- "  Responsiveness $RESP_SCORE   Reliability $REL_SCORE   Speed ${SPEED_SCORE:-skipped}"
     print -r -- "  $SUBHEADLINE"
+    print -r -- ""
+    print -r -- "(!) = worth a look    (X) = a problem"
     print -r -- ""
     print -r -- "FINDINGS"
     while IFS=$'\t' read -r tag t; do
