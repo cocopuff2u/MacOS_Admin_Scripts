@@ -4,60 +4,65 @@
 #
 # Network Health Check
 #
-# Purpose: Tests the Mac's network connection and shows the user a clear, plain-English results
-#          window — and gives IT the detailed data needed to troubleshoot. Measures:
-#            • Responsiveness — lag, latency, jitter, and packet loss to 1.1.1.1 / 8.8.8.8, plus the
-#                               router, so it can tell "your Wi-Fi/router" apart from "your ISP".
-#            • Reliability    — how much of the test the connection spent unresponsive (brief
-#                               spikes don't count; only sustained drop-outs do).
-#            • Speed          — download / upload plus latency under load (bufferbloat).
-#            • Web & DNS      — time-to-first-byte for common sites and how fast each DNS server is.
-#            • Wi-Fi          — signal, noise, SNR, band/channel, link rate, nearby networks.
-#          Everything rolls up into a 0–100 Network Score (90+ Excellent, 80 Good, 70 Okay, 50 Fair,
-#          under 50 Poor), a video-call verdict, and findings that say what is wrong. A "For IT"
-#          section adds the network path, DNS timings, proxy/VPN/extension info, MTU, IPv6, clock
-#          offset, DHCP details, and more. Save Report drops a text report (with raw command output)
-#          on the user's Desktop to attach to a ticket.
+# Purpose: Runs a network check on the Mac and shows the user an easy-to-read results window, plus
+#          gives IT the details needed to actually figure out what's wrong. It looks at:
+#            • Responsiveness - how laggy the connection is (latency, jitter, packet loss) to
+#                               1.1.1.1 and 8.8.8.8. It also checks the router on its own, so it
+#                               can tell if the problem is the user's Wi-Fi/router or their ISP.
+#            • Reliability    - did the connection drop out during the test? Quick blips are
+#                               ignored, only real drop-outs count.
+#            • Speed          - download, upload, and how much the lag gets worse when the
+#                               connection is busy (bufferbloat).
+#            • Web & DNS      - how fast common sites start loading, and how fast each DNS server
+#                               answers.
+#            • Wi-Fi          - signal strength, noise, channel, link speed, and how crowded the
+#                               channel is.
+#          All of that turns into a 0-100 Network Score (90+ Excellent, 80 Good, 70 Okay, 50 Fair,
+#          under 50 Poor), a "ready for video calls?" answer, and a short list of what's wrong in
+#          plain English. Below that is a "For IT" section with the nerdy stuff: traceroute, DNS
+#          timings, proxy/VPN info, MTU, IPv6, clock offset, DHCP, etc. The Save Report button drops
+#          a text file on the user's Desktop they can attach to a ticket.
 #
-# Note: Fully native — no swiftDialog or JamfHelper. The GUI is built with osascript (JXA) + AppKit
-#       and shown in the console user's session, so it works even when run as root from Jamf.
-#       Running as root (Jamf) adds the Wi-Fi network name, access point, MCS, channel
-#       utilization, and TCP retransmit stats.
+# Note: No swiftDialog or JamfHelper needed. The windows are built with osascript (JXA) + AppKit and
+#       show up in the logged-in user's session, so it works fine when Jamf runs it as root.
+#       Running as root also unlocks a few extra Wi-Fi details (network name, access point, MCS,
+#       channel utilization) and TCP retransmit stats.
 #
 # ---------------------------------------------------------------------------------------------
 # HOW TO DEPLOY:
 #
-#   Self Service (the user clicks it, watches progress, reads the results, can save a report):
-#     • Leave the script as-is (HEADLESS=false). Set Jamf Parameter 4 to "verbose" or leave blank.
+#   Self Service (the user clicks it, watches it run, reads the results, can save a report):
+#     • Leave the script as-is (HEADLESS=false). Set Jamf Parameter 4 to "verbose" or leave it blank.
 #
-#   Headless / automated (run silently, the report goes to the policy log + $logFile):
+#   Headless / automated (no windows, the report just goes to the policy log + $logFile):
 #     • Set Jamf Parameter 4 to "silent"  (OR set HEADLESS=true in the Config block below).
 #
-# JAMF SCRIPT PARAMETERS — on the script's "Options" tab in Jamf Pro, type these labels:
+# JAMF SCRIPT PARAMETERS - on the script's "Options" tab in Jamf Pro, type these labels:
 #
 #   Parameter 4 Label:  Action Mode (verbose or silent)
 #   Parameter 5 Label:  Speed Test (apple, cloudflare, or off)
 #   Parameter 6 Label:  Test Duration in seconds, or "quick" (blank = 20)
-#   Parameter 7 Label:  Simulate Scenario (testing only — leave blank)
+#   Parameter 7 Label:  Simulate Scenario (testing only - leave blank)
 #
-#   When you add this script to a policy, fill the parameters like this:
-#     $4  Action Mode        verbose = progress window + results window (default)
-#                            silent  = no windows; report is written to the policy log
-#     $5  Speed Test         apple      = macOS networkQuality (multi-stream, default)
-#                            cloudflare = speed.cloudflare.com (single stream)
+#   When you add this script to a policy, fill the parameters in like this:
+#     $4  Action Mode        verbose = show the progress + results windows (default)
+#                            silent  = no windows, the report goes to the policy log
+#     $5  Speed Test         apple      = Apple's built-in networkQuality test (default)
+#                            cloudflare = speed.cloudflare.com instead
 #                            off        = skip the speed test
-#     $6  Test Duration      seconds to sample responsiveness/reliability. Blank = TEST_SECONDS.
-#                            quick = 5s sample + no speed test (about 15 seconds total)
-#     $7  Simulate Scenario  BLANK for real use. A scenario name fakes the results so you can see
-#                            what users see (e.g. weak-wifi, no-internet, all-bad) — see SIMULATE.
+#     $6  Test Duration      how many seconds to ping for. Blank = TEST_SECONDS below.
+#                            quick = 5 second ping and no speed test (about 15 seconds total)
+#     $7  Simulate Scenario  Leave this BLANK for real use. Put a scenario name in here (like
+#                            weak-wifi or no-internet) and it fakes the results so you can see
+#                            what a user would see. See SIMULATE below for the full list.
 # ---------------------------------------------------------------------------------------------
 #
-# TESTING (from Terminal — $1..$4 map to Jamf $4..$7):
+# TESTING (from Terminal, $1..$4 line up with Jamf's $4..$7):
 #   ./Network_Health_Check.sh                          # normal run
 #   ./Network_Health_Check.sh verbose off quick        # quick check, no speed test
-#   NHC_SIMULATE=weak-wifi ./Network_Health_Check.sh   # fake a scenario (list: NHC_SIMULATE=list)
-#   NHC_DEBUG=1 ./Network_Health_Check.sh              # keep /tmp/network-health-check.<pid>
-#   sudo ./Network_Health_Check.sh silent              # full Wi-Fi / TCP detail, report to stdout
+#   NHC_SIMULATE=weak-wifi ./Network_Health_Check.sh   # fake a bad network (NHC_SIMULATE=list shows them all)
+#   NHC_DEBUG=1 ./Network_Health_Check.sh              # keeps the temp files in /tmp/network-health-check.<pid>
+#   sudo ./Network_Health_Check.sh silent              # everything, including the root-only Wi-Fi/TCP stuff
 #
 # https://github.com/cocopuff2u
 #
@@ -65,51 +70,50 @@
 #
 # HISTORY
 #
-# 1.0 9/24/26 - Original Release - Responsiveness (lag/latency/jitter/loss, router vs internet),
-#               reliability, speed + bufferbloat, web & DNS timing, Wi-Fi link, 0–100 scoring,
-#               video-call verdict, plain-English findings, "For IT" diagnostics, live progress
-#               window with Cancel, results window with Save Report / Run Again, verbose/silent
-#               modes, quick mode, simulation scenarios, step timings, optional JSON results.
-#               - @cocopuff2u
-# 1.1 9/24/26 - Data accuracy fixes - traceroute hops now average all probes (multi-address
-#               replies were ignored); your DNS servers labelled correctly even when they're public
-#               resolvers; MAC shows both the in-use (private Wi-Fi) and hardware address; VPN
-#               connection state read correctly; nearby Wi-Fi counts access-point radios on your
-#               channel accurately; Wi-Fi signal sampling no longer cut off at the end of the test;
-#               failed websites retried once before being reported. - @cocopuff2u
+# 1.0 9/24/26 - Original Release - Tests responsiveness (router vs internet), reliability, speed and
+#               bufferbloat, web + DNS timing, and Wi-Fi. 0-100 score, video call check, plain-English
+#               findings, "For IT" details, live progress window with a Cancel button, results window
+#               with Save Report / Run Again, verbose/silent/quick modes, simulated scenarios for
+#               testing, step timings, and optional JSON results. - @cocopuff2u
+# 1.1 9/24/26 - Accuracy fixes - traceroute hop times now use every reply (some were being skipped),
+#               your own DNS servers are labeled right even if they're Google/Cloudflare, shows both
+#               the private Wi-Fi MAC and the real hardware MAC, VPN connection status reads right,
+#               the "nearby access points" count is accurate now, the Wi-Fi signal readings don't
+#               get cut off at the end of the test, and a website gets one retry before it's
+#               reported as failed. - @cocopuff2u
 #
 ####################################################################################################
 
-# --- Config — edit these to suit your environment --------------------------------------------
+# --- Config - change these to fit your environment --------------------------------------------
 
 # HOW IT RUNS ---------------------------------------------------------------
-HEADLESS=false          # false = behave per the Jamf "Action Mode" param ($4).
-                        # true  = ALWAYS run silently (no windows), no matter what $4 says.
+HEADLESS=false          # false = do whatever Jamf Parameter 4 says (verbose or silent).
+                        # true  = ALWAYS run silently with no windows, no matter what $4 says.
 
 # RESPONSIVENESS + RELIABILITY ----------------------------------------------
-TEST_SECONDS=20         # how long to sample (Jamf $6 overrides). Longer = better reliability data.
-PING_INTERVAL=0.5       # seconds between pings
-INTERNET_TARGETS=(      # ICMP targets for internet responsiveness (anycast — nearest server worldwide)
-    "1.1.1.1"
+TEST_SECONDS=20         # how long to ping for (Jamf $6 overrides this). Longer = better drop-out data.
+PING_INTERVAL=0.5       # how often to ping, in seconds
+INTERNET_TARGETS=(      # what we ping. These are "anycast", so every Mac hits the closest server
+    "1.1.1.1"           # no matter what country it's in.
     "8.8.8.8"
 )
-HTTPS_FALLBACK_TARGETS=(   # used ONLY when ICMP is blocked (TCP connect time instead of ping)
+HTTPS_FALLBACK_TARGETS=(   # only used if ping is blocked on the network - we time an HTTPS connection instead
     "https://speed.cloudflare.com"
     "https://www.google.com"
 )
-OUTAGE_MIN_LOST=3       # consecutive pings lost to EVERY target before it counts as an outage
-                        # (brief spikes don't count — only sustained unresponsiveness)
+OUTAGE_MIN_LOST=3       # how many pings in a row have to go missing (on EVERY target) before we call it
+                        # a drop-out. One or two missing pings is just a blip and gets ignored.
 
 # SPEED ---------------------------------------------------------------------
-SPEED_ENGINE="apple"    # apple = networkQuality (built in, multi-stream, measures bufferbloat)
-                        # cloudflare = speed.cloudflare.com (single stream) | off = skip
-                        # (Jamf $5 overrides)
-SPEED_MAX_SECONDS=15    # cap on the speed test run time
-CF_DOWN_BYTES=25000000  # cloudflare engine: download size (bytes)
-CF_UP_BYTES=10000000    # cloudflare engine: upload size (bytes)
+SPEED_ENGINE="apple"    # apple      = Apple's built-in networkQuality (also measures bufferbloat)
+                        # cloudflare = speed.cloudflare.com
+                        # off        = skip it        (Jamf $5 overrides this)
+SPEED_MAX_SECONDS=15    # longest the speed test is allowed to run
+CF_DOWN_BYTES=25000000  # cloudflare only: how much to download (bytes)
+CF_UP_BYTES=10000000    # cloudflare only: how much to upload (bytes)
 
-# WEB RESPONSIVENESS --------------------------------------------------------
-WEB_TARGETS=(           # sites timed for DNS / connect / TLS / time-to-first-byte
+# WEBSITES + DNS ------------------------------------------------------------
+WEB_TARGETS=(           # sites we time. Swap in whatever your users actually live in (Okta, Slack, etc.)
     "https://www.google.com"
     "https://www.apple.com"
     "https://www.microsoft.com"
@@ -118,40 +122,41 @@ WEB_TARGETS=(           # sites timed for DNS / connect / TLS / time-to-first-by
     "https://zoom.us"
     "https://teams.microsoft.com"
 )
-DNS_TEST_DOMAINS=(      # names looked up against each DNS server (yours + 1.1.1.1 + 8.8.8.8)
+DNS_TEST_DOMAINS=(      # names we look up on each DNS server (the Mac's own + 1.1.1.1 + 8.8.8.8)
     "apple.com"
     "microsoft.com"
     "google.com"
 )
 
 # CONNECTION INFO -----------------------------------------------------------
-PUBLIC_IP_LOOKUP_URL="https://ipinfo.io/json"   # public IP / ISP / location. Blank = skip.
+PUBLIC_IP_LOOKUP_URL="https://ipinfo.io/json"   # used to show the public IP, ISP, and city. Blank = skip it.
 
 # REPORT --------------------------------------------------------------------
-# "Save Report" writes a text report to the user's Desktop. Tokens are filled in:
-#   {USER} = short name   {SERIAL} = device serial   {STAMP} = YYYYMMDD-HHMMSS
+# "Save Report" puts a text file on the user's Desktop. These get swapped out in the name:
+#   {USER} = username   {SERIAL} = serial number   {STAMP} = date and time (YYYYMMDD-HHMMSS)
 REPORT_NAME_PATTERN="NetworkHealth_{USER}_{SERIAL}_{STAMP}.txt"
-logFile="/var/log/network_health_check.log"      # this script's own run log
+logFile="/var/log/network_health_check.log"      # where this script logs what it did
 
 # TESTING -------------------------------------------------------------------
-QUICK_MODE=false        # true = quick check: 5s ping sample and NO speed test (≈15s total).
-                        # Jamf $6 = "quick" (or NHC_QUICK=1 on the command line) does the same.
-SIMULATE=""             # "" = real test. A scenario name FAKES the results so you can see exactly
-                        # what users see, without touching the network. Jamf $7 or NHC_SIMULATE
-                        # override this. Combine with commas (weak-wifi,vpn). "list" prints them all:
+QUICK_MODE=false        # true = quick check: 5 second ping and no speed test (about 15 seconds total).
+                        # Setting Jamf $6 to "quick" (or NHC_QUICK=1 in Terminal) does the same thing.
+SIMULATE=""             # Leave blank for a real test. Put a scenario name here and the script FAKES the
+                        # results so you can see what users would see, without messing with the network.
+                        # Jamf $7 or NHC_SIMULATE override this. You can combine them (weak-wifi,vpn).
+                        # "list" prints them all. The scenarios are:
                         #   healthy  not-connected  no-internet  captive-portal  packet-loss  outage
                         #   ping-blocked  slow-dns  bufferbloat  slow-speed  weak-wifi  2ghz  vpn
                         #   broken-ipv6  router-bottleneck  isp-problem  clock-skew  proxy
                         #   slow-ethernet  all-bad
 
 # RESULTS FILE (optional) ---------------------------------------------------
-SAVE_JSON=false                            # true = also save the results as JSON (needs root):
-JSON_DIR="/Library/Management/NetworkHealth"   #   last.json  = the latest run
-JSON_HISTORY_MAX=500                       #   history.jsonl = one line per run, newest last
+SAVE_JSON=false                            # true = also save the results as JSON (has to run as root):
+JSON_DIR="/Library/Management/NetworkHealth"   #   last.json     = the most recent run
+JSON_HISTORY_MAX=500                       #   history.jsonl = one line per run, keeps the last 500
 
 # LOOK OF THE WINDOWS (verbose mode only) -----------------------------------
-bannerColor="#0056D2"                      # banner bar colour (hex)
-BANNER_TEXT_COLOR="#FFFFFF"                # banner title colour (hex)
+bannerColor="#0056D2"                      # banner color (hex)
+BANNER_TEXT_COLOR="#FFFFFF"                # banner text color (hex)
 SPINNER_TEXT="Checking your network…"
 RESULT_TITLE="Network Health Check"
 SUPPORT_NOTE="Having trouble? Click Save Report and attach it to your IT ticket."
@@ -159,7 +164,7 @@ SAVED_TITLE="Report Saved"
 okButton="Done"
 againButton="Run Again"
 saveButton="Save Report"
-cancelButton="Cancel"                      # on the progress window — stops the test
+cancelButton="Cancel"                      # button on the progress window that stops the test
 # ---------------------------------------------------------------------------------------------
 # Do not edit below this line.
 ####################################################################################################
@@ -168,26 +173,26 @@ emulate -L zsh
 setopt no_nomatch null_glob extended_glob
 zmodload zsh/datetime   # EPOCHREALTIME / EPOCHSECONDS
 
-# Per-run scratch dir (ping output, data rows, generated .jxa); always cleaned up.
+# A temp folder for this run (ping output, results, the window scripts). It gets deleted at the end.
 SCRATCH="/tmp/network-health-check.$$"
 /bin/mkdir -p "$SCRATCH"; /bin/chmod 755 "$SCRATCH"
-# Stop every background process this script started (pings, traceroute, speed test, windows) —
-# walks the whole tree, since pings launched from functions sit under a subshell.
+# Kills everything this script started in the background (pings, traceroute, speed test, windows).
+# It walks down the whole process tree, because some pings are children of children.
 kill_tree() { local c; for c in $(/usr/bin/pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
 stop_children() { local c; for c in $(/usr/bin/pgrep -P $$ 2>/dev/null); do kill_tree "$c"; done; }
-trap 'stop_children; [[ -n "$NHC_DEBUG" ]] || /bin/rm -rf "$SCRATCH"' EXIT INT TERM   # NHC_DEBUG=1 keeps it
-STATUS_FILE="$SCRATCH/status.txt"   # the progress HUD polls this (step / title / detail / percent range / eta)
-LIVE_FILE="$SCRATCH/live.txt"       # live metric for the HUD (big value / caption / sparkline series)
-FACTS_FILE="$SCRATCH/facts.txt"     # one-off results for the HUD — each is held on screen ~2s so it can be read
-DATA_FILE="$SCRATCH/rows.tsv"       # result rows the results window + text report are built from
-FIND_FILE="$SCRATCH/findings.tsv"   # findings (status <tab> text)
+trap 'stop_children; [[ -n "$NHC_DEBUG" ]] || /bin/rm -rf "$SCRATCH"' EXIT INT TERM   # NHC_DEBUG=1 keeps the temp folder around
+STATUS_FILE="$SCRATCH/status.txt"   # the progress window reads this to know which step we're on
+LIVE_FILE="$SCRATCH/live.txt"       # the live number + graph on the progress window (ping ms, Mbps)
+FACTS_FILE="$SCRATCH/facts.txt"     # one-off results for the progress window, each one stays up ~2s so people can read it
+DATA_FILE="$SCRATCH/rows.tsv"       # every row shown in the results window and the report
+FIND_FILE="$SCRATCH/findings.tsv"   # the "What we found" list
 REPORT_FILE="$SCRATCH/report.txt"
-CANCEL_FILE="$SCRATCH/cancel.flag"  # the HUD's Cancel button writes here (world-writable: HUD runs as the user)
+CANCEL_FILE="$SCRATCH/cancel.flag"  # the Cancel button writes here (anyone can write to it, since the window runs as the user)
 : > "$CANCEL_FILE"; /bin/chmod 666 "$CANCEL_FILE"
 
-# --- Argument parsing -------------------------------------------------------
-# Jamf passes mount point as $1 ("/"), computer name $2, user $3. Strip that trio so our real
-# params line up as $1=$4, $2=$5, $3=$6, $4=$7. Run locally without "/" and params pass through.
+# --- Reading the parameters -------------------------------------------------
+# Jamf always sends 3 things first ("/", the computer name, the username). We drop those so our
+# parameters line up the same whether Jamf runs it or you run it from Terminal.
 JAMF_USER=""
 if [[ "$1" == "/" ]]; then JAMF_USER="$3"; shift 3; fi
 ACTION_MODE="${1:-verbose}"; ACTION_MODE="${ACTION_MODE:l}"
@@ -200,9 +205,9 @@ ACTION_MODE="${1:-verbose}"; ACTION_MODE="${ACTION_MODE:l}"
 [[ -n "$NHC_SIMULATE" ]] && SIMULATE="${NHC_SIMULATE:l}"
 if [[ "$QUICK_MODE" == true ]]; then TEST_SECONDS=5; SPEED_ENGINE="off"; fi
 
-# --- Console / user resolution ----------------------------------------------
-# Resolve the logged-in (console) user so windows appear in their session and the report lands
-# on THEIR Desktop, even when this runs as root from Jamf.
+# --- Who's logged in --------------------------------------------------------
+# Figure out who's actually sitting at the Mac, so the windows show up on their screen and the
+# report lands on THEIR Desktop, even though Jamf runs this as root.
 consoleUser=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
 [[ "$consoleUser" == "root" || "$consoleUser" == "loginwindow" ]] && consoleUser=""
 [[ -n "$consoleUser" ]] && consoleUID=$(/usr/bin/id -u "$consoleUser" 2>/dev/null)
@@ -217,51 +222,54 @@ USER_HOME=$(/usr/bin/dscl . -read /Users/"$targetUser" NFSHomeDirectory 2>/dev/n
 [[ -z "$USER_HOME" ]] && USER_HOME="/Users/$targetUser"
 
 [[ "$HEADLESS" == true ]] && ACTION_MODE="silent"
-# No one logged in = nobody to show windows to.
+# Nobody logged in? Then there's no one to show windows to, so run silently.
 [[ -z "$consoleUser" ]] && (( amRoot )) && ACTION_MODE="silent"
 
-# Banner colour -> RGB for AppKit
+# Turn the banner hex colors into the RGB numbers AppKit wants
 bhex="${bannerColor#\#}";   br=$((16#${bhex[1,2]}));  bg=$((16#${bhex[3,4]}));  bb=$((16#${bhex[5,6]}))
 tchex="${BANNER_TEXT_COLOR#\#}"; tr=$((16#${tchex[1,2]})); tg=$((16#${tchex[3,4]})); tb=$((16#${tchex[5,6]}))
 
 PING_COUNT=$(/usr/bin/awk -v s="$TEST_SECONDS" -v i="$PING_INTERVAL" 'BEGIN{printf "%d", s/i}')
 
 # --- Helpers ----------------------------------------------------------------
-# Timestamped line to stdout (Jamf policy log) and $logFile when writable (i.e. running as root).
+# Writes a timestamped line to the Jamf policy log, and to $logFile if we can (only as root).
 logWritable() { [[ -w "$logFile" ]] || { [[ ! -e "$logFile" && -w "${logFile:h}" ]]; }; }
 logMe() { local l="$(/bin/date '+%Y-%m-%d %H:%M:%S') [$1] ${2}"; print -r -- "$l"; logWritable && print -r -- "$l" >> "$logFile"; return 0; }
-as_esc() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; print -r -- "${s//$'\n'/\\n}"; }   # escape \ " newline for JS
-clean() { local s="${1//$'\t'/ }"; print -r -- "${s//$'\n'/ }"; }                        # no tabs/newlines in a field
+as_esc() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; print -r -- "${s//$'\n'/\\n}"; }   # makes text safe to drop into the JavaScript
+clean() { local s="${1//$'\t'/ }"; print -r -- "${s//$'\n'/ }"; }                        # strips tabs/newlines so they don't break the results file
 
-# Update the progress HUD.
-#   spin_status <step 0-4> <title> <detail> <pct-from> <pct-to> <expected-seconds> [linear]
-# The bar eases from pct-from toward pct-to over the expected time (linear=1 for timed steps
-# like the ping sample), so it keeps moving even while a long test runs.
+# Tells the progress window what step we're on.
+#   spin_status <step 0-4> <title> <detail> <start %> <end %> <about how many seconds> [linear]
+# The bar slides from the start % toward the end % over that time, so it keeps moving even
+# during something slow like the speed test instead of just sitting there.
 spin_status() {
   print -rl -- "$1" "$2" "$3" "$4" "$5" "$6" "${7:-0}" > "$STATUS_FILE" 2>/dev/null
   /bin/chmod 644 "$STATUS_FILE" 2>/dev/null
 }
-# HUD text markup for the big value: "code:text|code:text" — w white, c cyan, p purple, g green,
-# o orange, r red, b blue, y yellow. e.g. "c:↓ 42|w:   |p:↑ 36"
+# Colors for the big number on the progress window. You write it like "code:text|code:text", where
+# w=white c=cyan p=purple g=green o=orange r=red b=blue y=yellow. Example: "c:↓ 42|w:   |p:↑ 36"
 lag_code()  { case $(lag_status "$1") in good) print g;; ok) print o;; bad) print r;; *) print w;; esac; }
 stat_code() { case "$1" in good) print g;; ok) print o;; bad) print r;; *) print w;; esac; }
 band_code() { local v=$1; (( v>=80 )) && { print g; return }; (( v>=70 )) && { print y; return }; (( v>=50 )) && { print o; return }; print r; }
 
-# A one-off result for the HUD (queued; each stays up long enough to read). Clears the live stream.
+# Shows a one-off result on the progress window. They wait in line so each one stays up long
+# enough to actually read.
 fact() {
   print -r -- "$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"$3" >> "$FACTS_FILE" 2>/dev/null
   /bin/chmod 644 "$FACTS_FILE" 2>/dev/null; : > "$LIVE_FILE"
 }
-# Live streaming value on the HUD (ping ms, Mbps): live_metric <big value> <caption> <csv series> [csv series 2]
+# Shows a number that keeps changing (ping ms, Mbps) plus its little graph.
+#   live_metric <big number> <caption> <graph values> [second graph values]
 live_metric() {
   print -rl -- "$1" "$2" "$3" "$4" > "$LIVE_FILE" 2>/dev/null
   /bin/chmod 644 "$LIVE_FILE" 2>/dev/null
 }
 
-# Interface byte counters (in out) — sampled for the live throughput readout.
+# How many bytes have gone in/out of the network card. We check it twice a second to get live Mbps.
 if_bytes() { /usr/sbin/netstat -ibn -I "$PHYS_IF" 2>/dev/null | /usr/bin/awk 'NR==2{print $7, $10}'; }
 
-# throughput_monitor <pid> <both|down|up> — while <pid> runs, show live Mbps + sparkline on the HUD.
+# While the speed test is running, keep showing the live Mbps on the progress window.
+#   throughput_monitor <pid of the speed test> <both|down|up>
 throughput_monitor() {
   local pid=$1 mode=$2 i0 o0 i1 o1 t0 t1 d u big; local -a sd su
   read -r i0 o0 <<< "$(if_bytes)"; t0=$EPOCHREALTIME
@@ -284,7 +292,7 @@ throughput_monitor() {
   done
 }
 
-# Result rows. Status is one of: good | ok | bad | na
+# Adding rows to the results. The status controls the colored dot: good | ok | bad | na (no dot)
 heading() { print -r -- "H"$'\t'"$(clean "$1")" >> "$DATA_FILE"; }
 section() { print -r -- "S"$'\t'"$(clean "$1")"$'\t'"$2" >> "$DATA_FILE"; }
 row()     { print -r -- "R"$'\t'"$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"${3:-na}" >> "$DATA_FILE"; }
@@ -295,12 +303,13 @@ device_serial() {
     | /usr/bin/awk -F'"' '/IOPlatformSerialNumber/{print $4; exit}'
 }
 
-# Math helpers (awk does the floating point)
+# Math helpers (zsh isn't great with decimals, so awk does it)
 calc() { /usr/bin/awk "BEGIN{printf \"%.1f\", $1}" 2>/dev/null; }
 r0()   { /usr/bin/awk -v v="$1" 'BEGIN{printf "%.0f", v}'; }
 isnum() { [[ "$1" == (-|)<->(.<->|) ]]; }
 
-# interp <value> "<x:y> <x:y> ..."  -> piecewise-linear score (points sorted by x ascending)
+# Turns a measurement into a 0-100 score using a list of points, and fills in between them.
+# Example: interp 35 "20:100 50:90" gives about 95.
 interp() {
   /usr/bin/awk -v v="$1" -v pts="$2" 'BEGIN{
     n=split(pts,P," "); for(i=1;i<=n;i++){split(P[i],a,":"); X[i]=a[1]+0; Y[i]=a[2]+0}
@@ -309,18 +318,17 @@ interp() {
   }'
 }
 
-# Score -> band label / colour
+# Score -> its label (Excellent, Good...) and color
 band_label() { local s=$1; (( s>=90 )) && { print Excellent; return }; (( s>=80 )) && { print Good; return }
                (( s>=70 )) && { print Okay; return }; (( s>=50 )) && { print Fair; return }; print Poor; }
 band_color() { local s=$1; (( s>=90 )) && { print "#34C759"; return }; (( s>=80 )) && { print "#7CC444"; return }
                (( s>=70 )) && { print "#F2B800"; return }; (( s>=50 )) && { print "#FF9500"; return }; print "#FF3B30"; }
 score_status() { local s=$1; (( s>=80 )) && { print good; return }; (( s>=60 )) && { print ok; return }; print bad; }
 
-# --- Progress HUD ---------------------------------------------------------------------------------
-# Dark card with a 5-step tracker (Connect → Responsiveness → Websites → Speed → Score), a big live
-# metric + sparkline (ping times, then live Mbps), and an animated progress bar. The bar runs at
-# 30 fps and keeps easing forward through long steps using each step's expected duration (so it
-# never sits frozen), with a shimmer sweeping across it. Reads STATUS_FILE + LIVE_FILE ~5×/sec.
+# --- Progress window ------------------------------------------------------------------------------
+# The dark window users see while the test runs. It has the 5 step circles across the top, a big live
+# number with a graph (ping times, then Mbps), a progress bar that keeps moving smoothly, and a
+# Cancel button. It checks the status files about 5 times a second to see what's going on.
 SPIN_SCPT="$SCRATCH/spin.jxa"
 show_spinner() {
   [[ "$ACTION_MODE" == "verbose" ]] || return 0
@@ -343,7 +351,7 @@ var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);
 var W=620,H=372;
 var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),0,2,false);
 win.opaque=false; win.backgroundColor=$.NSColor.clearColor; win.level=5; win.movableByWindowBackground=true;
-win.appearance=$.NSAppearance.appearanceNamed($.NSAppearanceNameDarkAqua);   // dark controls on the dark card
+win.appearance=$.NSAppearance.appearanceNamed($.NSAppearanceNameDarkAqua);   // dark buttons to match the dark window
 var cv=win.contentView;
 var card=rbox(10,10,W-20,H-20,C(0.13,0.13,0.15,0.97),22);
 card.shadow=$.NSShadow.alloc.init; card.shadow.shadowBlurRadius=24; card.shadow.shadowOffset=$.NSMakeSize(0,-4); card.shadow.shadowColor=C(0,0,0,0.45);
@@ -351,7 +359,7 @@ cv.addSubview(card);
 
 var title=label(30,H-62,W-60,26,18,$.NSFontWeightBold); title.stringValue=TITLE; cv.addSubview(title);
 
-// Cancel (top-right): writes the flag file the shell polls; the shell then stops and closes this window.
+// Cancel button (top right). It writes the cancel file, and the script sees that, stops, and closes this window.
 if(!$.NHCancel){ObjC.registerSubclass({name:'NHCancel',superclass:'NSObject',methods:{
  'cancel:':{types:['void',['id']],implementation:function(b){
    $("1").writeToFileAtomicallyEncodingError(CANCEL,false,$.NSUTF8StringEncoding,null);
@@ -360,7 +368,7 @@ var ch=$.NHCancel.alloc.init;
 var cb=$.NSButton.alloc.initWithFrame($.NSMakeRect(W-124,H-60,96,26)); cb.title=CANCEL_L; cb.bezelStyle=1; cb.controlSize=1;
 cb.target=ch; cb.action='cancel:'; cv.addSubview(cb);
 
-// Step tracker
+// The 5 step circles
 var STEPS=[["network","Connect"],["gauge.with.dots.needle.67percent","Responsiveness"],["globe","Web & DNS"],["speedometer","Speed"],["checkmark.seal","Score"]];
 var nodeY=H-134, x0=92, gap=(W-2*x0)/4, nodes=[], links=[];
 for(var i=0;i<4;i++){ var lx=x0+i*gap+22, lw=gap-44;
@@ -372,11 +380,11 @@ for(var i=0;i<STEPS.length;i++){ var cx=x0+i*gap;
  var nl=label(cx-60,nodeY-22,120,16,10.5,$.NSFontWeightMedium); nl.stringValue=STEPS[i][1]; nl.textColor=DIM; cv.addSubview(nl);
  nodes.push({bg:bgc,icon:iv,lab:nl,sym:STEPS[i][0],state:-1}); }
 
-// Current step text
+// What step we're on
 var stepT=label(30,H-196,W-60,22,15,$.NSFontWeightSemibold); cv.addSubview(stepT);
 var detail=label(30,H-218,W-60,18,12); detail.textColor=C(0.62,0.66,0.74); cv.addSubview(detail);
 
-// Live metric card: sparkline drawn faintly across the whole card, centered coloured value on top
+// The live number box: a faint graph across the back, with the colored number on top
 cv.addSubview(rbox(30,72,W-60,78,C(1,1,1,0.05),12));
 var SPW=W-76, SPH=66;
 var spark=$.NSImageView.alloc.initWithFrame($.NSMakeRect(38,78,SPW,SPH)); spark.imageScaling=0; spark.alphaValue=0.45; cv.addSubview(spark);
@@ -395,7 +403,7 @@ function setBig(m){ var txt="", parts=[];
  big.attributedStringValue=as; }
 function showMetric(bigTxt,capTxt,a,b){ setBig(bigTxt); cap.setStringValue(capTxt||""); spark.setImage(drawSpark(nums(a),nums(b))); }
 
-// Progress bar (eased fill + shimmer)
+// Progress bar (slides smoothly, with a little shine moving across it)
 var BX=44, BY=44, BW=W-88-52, BH=10;
 cv.addSubview(rbox(BX,BY,BW,BH,C(1,1,1,0.10),5));
 var fill=rbox(BX,BY,0,BH,BLUE,5); try{fill.clipsToBounds=true;}catch(e){} cv.addSubview(fill);
@@ -432,7 +440,7 @@ function setSteps(k){
 }
 
 var shown=0, cur={key:"",step:0,from:0,to:2,eta:2,lin:false,t0:0}, frame=0, lastLive="", factIdx=0, holdUntil=0;
-var HOLD=1.7, HOLD_BUSY=1.1;   // seconds a one-off result stays up (shorter when several are queued)
+var HOLD=1.7, HOLD_BUSY=1.1;   // how long a one-off result stays up (shorter if a few are waiting)
 function now(){return Date.now()/1000;}
 function target(){ var el=now()-cur.t0, eta=Math.max(cur.eta,0.2), f;
  f = cur.lin ? Math.min(0.98, el/eta) : (1-Math.exp(-2.3*el/eta));
@@ -446,9 +454,9 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
     if(key!=cur.key){ cur={key:key,step:parseInt(L[0])||0,from:parseFloat(L[3])||0,to:parseFloat(L[4])||0,eta:parseFloat(L[5])||3,lin:L[6]=="1",t0:now()};
      setSteps(cur.step); stepT.setStringValue(L[1]||""); stepT.textColor=(cur.step>=5)?GREEN:WHITE; }
     detail.setStringValue(L[2]||""); }
-   // One-off results are queued and each held on screen; live streams fill the gaps between them.
+   // One-off results wait in line and each stays up long enough to read. Live numbers fill in between.
    var F=rd(FACTS).split("\n").filter(function(x){return x.length;});
-   if(cur.step>=5 && F.length>factIdx+1){ factIdx=F.length-1; holdUntil=0; }   // finish line: jump to the score
+   if(cur.step>=5 && F.length>factIdx+1){ factIdx=F.length-1; holdUntil=0; }   // at the end, skip straight to the score
    if(F.length>factIdx && now()>=holdUntil){
     var f=F[factIdx++].split("\t"); showMetric(f[0],f[1],f[2],"");
     holdUntil=now()+((F.length-factIdx)>1?HOLD_BUSY:HOLD); lastLive="";
@@ -478,8 +486,8 @@ JXA
 }
 kill_spinner() { /usr/bin/pkill -f "$SPIN_SCPT" 2>/dev/null; return 0; }
 
-# --- Simple message window (used after Save Report) ---------------------------
-# show_message <title> <sfSymbol> <tintHex> <message> [filename]
+# --- Simple message window (shown after Save Report) --------------------------
+# show_message <title> <SF Symbol name> <icon color hex> <message> [file name]
 show_message() {
   [[ "$ACTION_MODE" == "verbose" ]] || return 0
   local th="${3#\#}"; local ir=$((16#${th[1,2]})) ig=$((16#${th[3,4]})) ib=$((16#${th[5,6]}))
@@ -525,8 +533,8 @@ JXA
 }
 
 # --- Results window -----------------------------------------------------------
-# Score ring + headline, three sub-score tiles, findings card, and a scrollable details list
-# built from $DATA_FILE. Prints the button pressed: done | again | save
+# The big results window: score circle, headline, the three score boxes, "What we found", and the
+# scrollable details. Hands back which button they clicked: done, again, or save.
 show_results() {
   local rscpt="$SCRATCH/results.jxa" nc="$(band_color $NET_SCORE)" h
   local -a ncr; h="${nc#\#}"; ncr=($((16#${h[1,2]})) $((16#${h[3,4]})) $((16#${h[5,6]})))
@@ -572,9 +580,9 @@ var hd=$.NHRes.alloc.init;
 
 var rows=readLines(DATA).map(function(l){return l.split("\t");});
 var finds=readLines(FIND).map(function(l){return l.split("\t");});
-var ORD={bad:0,ok:1,na:2,good:3}; function rk(f){return /^SIMULATED/.test(f[1]||"")?-1:((f[0] in ORD)?ORD[f[0]]:2);} finds.sort(function(a,b){return rk(a)-rk(b);});   // problems first
+var ORD={bad:0,ok:1,na:2,good:3}; function rk(f){return /^SIMULATED/.test(f[1]||"")?-1:((f[0] in ORD)?ORD[f[0]]:2);} finds.sort(function(a,b){return rk(a)-rk(b);});   // problems at the top
 
-// ---- geometry (laid out top-down; y = H - top) ----
+// ---- sizes and positions (laid out top to bottom) ----
 var W=780, BH=74, PAD=28, HERO=176, FROW=22, TILEH=70;
 var findH=finds.length?(finds.length*FROW+44):0;
 var scr=$.NSScreen.mainScreen.visibleFrame.size.height;
@@ -591,7 +599,7 @@ cv.addSubview(rbox(0,H-BH,W,BH,rgb(BC)));
 var tl=label(TITLE,24,H-BH+30,W-48,26,19,$.NSFontWeightBold,1);tl.textColor=rgb(TC);cv.addSubview(tl);
 var st=label(SUB,24,H-BH+10,W-48,18,12,$.NSFontWeightRegular,1);st.textColor=rgb(TC,0.8);cv.addSubview(st);
 
-// Hero: score ring + headline + tiles
+// Top section: score circle, headline, and the 3 score boxes
 var top=BH+18, RS=156, heroY=H-top-HERO;
 var rv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(PAD+4,heroY+(HERO-RS)/2,RS,RS));rv.setImage(ring(RS,Math.max(0,SCORE)/100,rgb(SC)));cv.addSubview(rv);
 var sn=label(SCORE<0?"–":String(SCORE),PAD+4,heroY+(HERO-RS)/2+RS/2-14,RS,52,46,$.NSFontWeightBold,1);cv.addSubview(sn);
@@ -625,7 +633,7 @@ if(findH){
  y-=14;
 }
 
-// Details (scrollable)
+// Details (scrolls)
 var dl=label("Details",PAD,y-22,300,18,13,$.NSFontWeightSemibold);cv.addSubview(dl);
 y-=30;
 var dw=W-2*PAD, SECH=34, RH=24, docH=12;
@@ -635,7 +643,7 @@ docH=Math.max(docH,detH);
 var doc=$.NSView.alloc.initWithFrame($.NSMakeRect(0,0,dw-2,docH));
 var dy=docH-6, alt=0;
 rows.forEach(function(r){
- if(r[0]=="H"){   // divider between the user-facing results and the technical block
+ if(r[0]=="H"){   // the line that splits the user stuff from the "For IT" stuff
   dy-=HDH; alt=0;
   var hl=label(r[1].toUpperCase(),0,dy+12,dw,16,10.5,$.NSFontWeightBold,1);hl.textColor=$.NSColor.tertiaryLabelColor;doc.addSubview(hl);
   doc.addSubview(rbox(16,dy+19,(dw-260)/2,1,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.35)));
@@ -651,13 +659,13 @@ rows.forEach(function(r){
   var lb=label(r[1],38,dy+4,250,16,12);lb.textColor=$.NSColor.secondaryLabelColor;doc.addSubview(lb);
   var s=r[3]||"na";
   var vl=label(r[2],290,dy+4,dw-290-44,16,12,$.NSFontWeightMedium,2);vl.selectable=true;vl.toolTip=r[2];
-  if(s=="bad"||s=="ok") vl.textColor=rgb(hex(STAT[s]));   // problem values stand out in colour
+  if(s=="bad"||s=="ok") vl.textColor=rgb(hex(STAT[s]));   // color problem values so they stand out
   doc.addSubview(vl); if(s!="na"){doc.addSubview(rbox(dw-36,dy+8,8,8,rgb(hex(STAT[s]||STAT.na)),4));}
  }
 });
 var sv=$.NSScrollView.alloc.initWithFrame($.NSMakeRect(PAD,y-detH,dw,detH));
 sv.hasVerticalScroller=true;sv.borderType=1;sv.drawsBackground=false;sv.setDocumentView(doc);cv.addSubview(sv);
-sv.contentView.scrollToPoint($.NSMakePoint(0,docH-sv.contentView.bounds.size.height));sv.reflectScrolledClipView(sv.contentView);   // start at the top
+sv.contentView.scrollToPoint($.NSMakePoint(0,docH-sv.contentView.bounds.size.height));sv.reflectScrolledClipView(sv.contentView);   // start scrolled to the top
 
 // Note + buttons
 var nt=label(NOTE,PAD,22+32+10,W-2*PAD,16,11,$.NSFontWeightRegular,1);nt.textColor=$.NSColor.secondaryLabelColor;cv.addSubview(nt);
@@ -682,8 +690,8 @@ JXA
 ####################################################################################################
 
 # --- Connection info ----------------------------------------------------------
-# Works out the physical interface even when a VPN owns the default route, so router tests go
-# to the real LAN gateway. Sets PHYS_IF, PORT_NAME, CONN_TYPE, LOCAL_IP, GATEWAY, VPN_*.
+# Finds the real Wi-Fi or Ethernet connection. If a VPN is on, all traffic looks like it goes
+# through the VPN, so we dig past it to find the actual network card and the real router.
 detect_connection() {
   local def_if dev port line
   PHYS_IF=""; PORT_NAME=""; CONN_TYPE=""; LOCAL_IP=""; GATEWAY=""; VPN_ACTIVE=0; VPN_NAME=""
@@ -694,7 +702,7 @@ detect_connection() {
     [[ -z "$VPN_NAME" ]] && VPN_NAME="Active ($def_if)"
   fi
 
-  # device -> hardware port name
+  # match each device (en0...) to its name (Wi-Fi, Ethernet...)
   typeset -gA PORT_OF; PORT_OF=()
   while IFS= read -r line; do
     [[ "$line" == "Hardware Port: "* ]] && port="${line#Hardware Port: }"
@@ -704,7 +712,7 @@ detect_connection() {
   if [[ -n "$def_if" && -n "${PORT_OF[$def_if]}" ]]; then
     PHYS_IF="$def_if"
   else
-    # VPN (or unusual route): walk the service order for the first hardware port with an IP.
+    # VPN is on (or something odd): use the first real network port that has an IP address.
     for dev in $(/usr/sbin/networksetup -listnetworkserviceorder 2>/dev/null | /usr/bin/sed -n 's/.*Device: \([^)]*\)).*/\1/p'); do
       [[ -n "${PORT_OF[$dev]}" ]] || continue
       [[ -n "$(/usr/sbin/ipconfig getifaddr "$dev" 2>/dev/null)" ]] && { PHYS_IF="$dev"; break; }
@@ -732,8 +740,8 @@ lookup_public_ip() {
 }
 
 # --- Wi-Fi link ---------------------------------------------------------------
-# Root: wdutil (full detail incl. SSID/BSSID). Otherwise: system_profiler (SSID may be hidden
-# by macOS location privacy). Sets WIFI_* vars.
+# As root we can use wdutil, which gives the most detail (network name, access point, etc.).
+# Otherwise we ask CoreWLAN directly. macOS hides the network name unless we're root.
 wifi_info() {
   WIFI_SSID=""; WIFI_RSSI=""; WIFI_NOISE=""; WIFI_TX=""; WIFI_CH=""; WIFI_BAND=""; WIFI_WIDTH=""; WIFI_PHY=""; WIFI_SEC=""
   WIFI_BSSID=""; WIFI_MCS=""; WIFI_NSS=""; WIFI_CCA=""
@@ -742,7 +750,7 @@ wifi_info() {
     out=$(/usr/bin/wdutil info 2>/dev/null | /usr/bin/awk '/^WIFI/{f=1;next} f&&/^[A-Z][A-Z ]+$/{exit} f')
     kv() { print -r -- "$out" | /usr/bin/awk -F' : ' -v k="$1" '{g=$1; gsub(/^ +| +$/,"",g)} g==k{sub(/^ +/,"",$2); print $2; exit}'; }
     WIFI_SSID=$(kv SSID); WIFI_RSSI=$(kv RSSI); WIFI_NOISE=$(kv Noise); WIFI_TX=$(kv "Tx Rate")
-    WIFI_PHY=$(kv "PHY Mode"); WIFI_SEC=$(kv Security); ch=$(kv Channel)          # e.g. 5g153/80
+    WIFI_PHY=$(kv "PHY Mode"); WIFI_SEC=$(kv Security); ch=$(kv Channel)          # looks like 5g153/80 (band, channel, width)
     WIFI_BSSID=$(kv BSSID); WIFI_MCS=$(kv "MCS Index"); WIFI_NSS=$(kv NSS); WIFI_CCA=$(kv CCA)
     [[ "$WIFI_BSSID" == *redacted* ]] && WIFI_BSSID=""
     WIFI_RSSI="${WIFI_RSSI%% *}"; WIFI_NOISE="${WIFI_NOISE%% *}"; WIFI_TX="${WIFI_TX%% *}"
@@ -752,7 +760,7 @@ wifi_info() {
     fi
   fi
   if [[ -z "$WIFI_RSSI" ]]; then
-    # CoreWLAN via JXA — instant (system_profiler takes ~13s because it scans nearby networks).
+    # CoreWLAN answers instantly. (system_profiler works too, but it takes ~13 seconds.)
     out=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var i=$.CWWiFiClient.sharedWiFiClient.interface;
       var c=i.wlanChannel; [i.rssiValue, i.noiseMeasurement, i.transmitRate, c.channelNumber, c.channelBand, c.channelWidth,
       i.activePHYMode, i.security, ObjC.unwrap(i.ssid)||""].join("|")' 2>/dev/null)
@@ -769,8 +777,8 @@ wifi_info() {
   fi
   [[ -z "$WIFI_SSID" || "$WIFI_SSID" == *redacted* ]] && \
     WIFI_SSID=$(/usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
-  # macOS 14.4+ redacts the SSID in wdutil/ipconfig even for root unless ipconfig verbose mode is
-  # on — flip it on just long enough to read the name, then back off.
+  # Newer macOS hides the Wi-Fi name even from root, unless ipconfig's verbose mode is on.
+  # So we turn it on just long enough to read the name, then turn it right back off.
   if [[ -z "$WIFI_SSID" || "$WIFI_SSID" == *redacted* ]] && (( amRoot )); then
     /usr/sbin/ipconfig setverbose 1 2>/dev/null
     WIFI_SSID=$(/usr/sbin/ipconfig getsummary "$PHYS_IF" 2>/dev/null | /usr/bin/awk -F' : ' '/^ +SSID :/{print $2; exit}')
@@ -781,15 +789,15 @@ wifi_info() {
 }
 
 # --- Ping + stats ---------------------------------------------------------------
-# ping_run <host> <outfile> [bind-interface]
+# ping_run <what to ping> <save output here> [network card to use]
 ping_run() {
   local -a bind; [[ -n "$3" ]] && bind=(-b "$3")
   /sbin/ping -n $bind -c "$PING_COUNT" -i "$PING_INTERVAL" -W 1000 "$1" > "$2" 2>&1
 }
 
-# HTTPS fallback when ICMP is blocked: TCP connect time (≈ 1 RTT), written in ping's format
-# so the same stats code applies.
-http_probe() {   # <url> <outfile>
+# Backup plan for when ping is blocked: time how long an HTTPS connection takes to open instead.
+# We save it in the same format as ping so the same math works on it.
+http_probe() {   # <site> <save output here>
   local i t a b
   for (( i=0; i<PING_COUNT; i++ )); do
     check_cancel
@@ -800,10 +808,11 @@ http_probe() {   # <url> <outfile>
   done > "$2"
 }
 
-# ping_stats <file> -> P_RECV P_LOSS P_AVG P_MIN P_MAX P_JIT P_LAG P_LOST
-#   Latency = mean RTT of replies. Jitter = mean change between consecutive RTTs.
-#   Lag     = "what apps feel": every lost packet costs a resend (a 1.5 × worst-RTT wait)
-#             plus another trip, so loss shows up as extra delay.
+# Crunches a ping file into the numbers we show.
+#   Latency = the average ping time.
+#   Jitter  = how much the ping time jumps around from one ping to the next.
+#   Lag     = what apps actually feel. A lost packet has to be sent again, so each one adds a
+#             wait on top. That way packet loss shows up as extra delay, like it does in real life.
 ping_stats() {
   local out
   out=$(/usr/bin/awk -v n="$PING_COUNT" '
@@ -827,9 +836,9 @@ ping_stats() {
   [[ -z "$P_RECV" ]] && { P_RECV=0; P_LOSS=100; P_AVG=-; P_JIT=-; P_LAG=-; P_LOST=-; }
 }
 
-# reliability <lost-list;lost-list;...> -> REL_PCT OUTAGE_LONGEST_S OUTAGE_EVENTS
-#   A moment is "unresponsive" only if EVERY target lost that ping, and only runs of
-#   OUTAGE_MIN_LOST or more count (spikes don't).
+# Works out how much of the test the connection was actually down.
+# It only counts as down if EVERY target missed the same pings, and only if it lasted at
+# least OUTAGE_MIN_LOST pings in a row. One-off blips don't count.
 reliability_calc() {
   local out
   out=$(/usr/bin/awk -v n="$PING_COUNT" -v lists="$1" -v minrun="$OUTAGE_MIN_LOST" -v iv="$PING_INTERVAL" 'BEGIN{
@@ -847,7 +856,7 @@ loss_status()   { isnum "$1" || { print na; return }; (( $1 < 1 )) && print good
 ms()            { isnum "$1" && print -r -- "$(r0 $1) ms" || print -r -- "—"; }
 
 # --- Extra troubleshooting data -------------------------------------------------------------------
-# All quick (<0.5s each). Everything here lands in the "For IT" part of the results + the report.
+# All of these are quick (under half a second each). They show up in the "For IT" part of the results.
 
 mac_info() {
   MAC_MODEL=$(/usr/sbin/sysctl -n hw.model 2>/dev/null)
@@ -867,13 +876,13 @@ net_config() {
   DHCP_DOMAIN=$(/usr/sbin/ipconfig getoption "$PHYS_IF" domain_name 2>/dev/null)
   SEARCH_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/search domain/{print $4}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -3 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   out=$(/sbin/ifconfig "$PHYS_IF" 2>/dev/null)
-  IF_MAC=$(print -r -- "$out" | /usr/bin/awk '/ether /{print $2; exit}')          # address in use on this network
-  HW_MAC=$(/usr/sbin/networksetup -getmacaddress "$PHYS_IF" 2>/dev/null | /usr/bin/awk '{print $3}')   # burned-in hardware address
+  IF_MAC=$(print -r -- "$out" | /usr/bin/awk '/ether /{print $2; exit}')          # the address this network actually sees
+  HW_MAC=$(/usr/sbin/networksetup -getmacaddress "$PHYS_IF" 2>/dev/null | /usr/bin/awk '{print $3}')   # the Mac's real hardware address
   IF_MTU=$(print -r -- "$out" | /usr/bin/awk '/mtu /{print $NF; exit}')
   IF_MEDIA=$(print -r -- "$out" | /usr/bin/awk -F'media: ' '/media:/{print $2; exit}')
   IPV6_ADDR=$(print -r -- "$out" | /usr/bin/awk '/inet6 / && !/fe80/ && !/deprecated/{print $2; exit}')
 
-  # Other interfaces that also have an address (Wi-Fi + Ethernet both up, docks, etc.)
+  # Any other network connections that are also up (Wi-Fi and Ethernet at the same time, docks, etc.)
   OTHER_IFS=""
   for k in ${(k)PORT_OF}; do
     [[ "$k" == "$PHYS_IF" ]] && continue
@@ -881,7 +890,7 @@ net_config() {
     [[ -n "$f" ]] && OTHER_IFS+="${OTHER_IFS:+, }${PORT_OF[$k]} ($k) $f"
   done
 
-  # Proxy / PAC / WPAD
+  # Proxy settings (manual proxy, PAC file, or auto-discovery)
   out=$(/usr/sbin/scutil --proxy 2>/dev/null)
   pv() { print -r -- "$out" | /usr/bin/awk -F' : ' -v k="$1" '{g=$1; gsub(/^ +/,"",g)} g==k{print $2; exit}'; }
   PROXY_DESC=""
@@ -891,34 +900,36 @@ net_config() {
   [[ "$(pv ProxyAutoConfigEnable)" == 1 ]] && PROXY_DESC+="${PROXY_DESC:+; }PAC $(pv ProxyAutoConfigURLString)"
   [[ "$(pv ProxyAutoDiscoveryEnable)" == 1 ]] && PROXY_DESC+="${PROXY_DESC:+; }Auto-discovery (WPAD)"
 
-  # Network extensions (VPN clients, content filters, security agents) + configured VPNs
+  # Network extensions (VPN apps, web filters, security tools) and any VPNs set up on the Mac
   NE_LIST=$(/usr/bin/systemextensionsctl list 2>/dev/null | /usr/bin/sed -n '/network_extension/,/^---/p' \
             | /usr/bin/awk -F'\t' '/activated enabled/{print $5}' | /usr/bin/awk '!s[$0]++' | /usr/bin/paste -sd';' - | /usr/bin/sed 's/;/; /g')
   VPN_CONFIGS=$(/usr/sbin/scutil --nc list 2>/dev/null | /usr/bin/awk -F'"' 'NF>2{ st=""; if(match($1,/\([A-Za-z ]+\)/)) st=substr($1,RSTART+1,RLENGTH-2); print $2 (st==""?"":" (" st ")") }' | /usr/bin/paste -sd';' - | /usr/bin/sed 's/;/; /g')
 }
 
-# Which Cloudflare edge city this Mac lands on (a far-away edge = odd routing / VPN egress).
+# Which Cloudflare city this Mac connects to. If it's far away, the traffic is taking a weird route
+# (usually a VPN).
 cf_edge() {
   local out=$(/usr/bin/curl -s -m 4 https://speed.cloudflare.com/cdn-cgi/trace 2>/dev/null)
   CF_COLO=$(print -r -- "$out" | /usr/bin/awk -F= '/^colo=/{print $2}')
   CF_WARP=$(print -r -- "$out" | /usr/bin/awk -F= '/^warp=/{print $2}')
 }
 
-# Interface error counters + TCP retransmits (TCP stats only populate when run as root).
+# Network card error counts and TCP resends. (macOS only fills in the TCP numbers for root.)
 counters() {
   local e=$(/usr/sbin/netstat -ibn -I "$PHYS_IF" 2>/dev/null | /usr/bin/awk 'NR==2{print $6+0, $9+0}')
   local t=$(/usr/sbin/netstat -s -p tcp 2>/dev/null | /usr/bin/awk '/packets? sent$/ && !s{s=$1} /data packets? \(.*\) retransmitted$/ && !r{r=$1} END{print s+0, r+0}')
   print -r -- "$e $t"
 }
 
-# Wi-Fi sampler: one CoreWLAN reading per second (rssi noise txrate channel) for N seconds.
-wifi_sampler() {   # <seconds> <outfile>
+# Reads the Wi-Fi signal once a second during the test, so we can see if it dips or changes channel.
+wifi_sampler() {   # <how many seconds> <save output here>
   /usr/bin/osascript -l JavaScript -e "ObjC.import('CoreWLAN'); var i=\$.CWWiFiClient.sharedWiFiClient.interface, o=[];
     for(var k=0;k<$1;k++){ var c=i.wlanChannel; o.push([i.rssiValue,i.noiseMeasurement,i.transmitRate,c?c.channelNumber:0].join(' '));
     \$.NSThread.sleepForTimeInterval(1); } o.join('\n')" > "$2" 2>/dev/null
 }
 
-# Nearby networks from the last system scan (no new scan = instant). Sets WIFI_NEARBY / WIFI_COCHAN.
+# Counts nearby access points from the Mac's last Wi-Fi scan (we don't start a new scan, that would
+# mess with the ping results). Also counts how many are on the same channel as us.
 wifi_neighbors() {
   local out=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreWLAN"); var s=$.CWWiFiClient.sharedWiFiClient.interface.cachedScanResults;
     var a=s?s.allObjects:null, o=[]; if(a){ for(var k=0;k<a.count;k++){ var x=a.objectAtIndex(k); o.push(x.wlanChannel.channelNumber+":"+x.rssiValue);} } o.join(" ")' 2>/dev/null)
@@ -926,9 +937,9 @@ wifi_neighbors() {
     NF==2 { n++; if($1==ch){ c++; if($2>-75) s++ } } END{ print n+0, c+0, s+0 }')"
 }
 
-# Path trace: hop list "n<tab>ip<tab>avg-ms<tab>lost-of-3". Private/CGNAT ranges flag the LAN side.
-# A hop that answers from several addresses prints its extra replies on indented continuation lines —
-# those are folded into the same hop so the average covers all 3 probes.
+# Turns the traceroute output into one line per hop: hop number, address, average time, missed replies.
+# Some hops answer from a few different addresses and traceroute puts those on extra lines, so we
+# fold them back into the same hop to get a fair average.
 parse_trace() {
   /usr/bin/awk 'function flush(){ if(n!="") printf "%s\t%s\t%s\t%d\n", n, (ip==""?"*":ip), (c?sprintf("%.1f",s/c):"-"), l }
     { start=($0 ~ /^ *[0-9]+ /); if(start){ flush(); n=$1; ip=""; s=0; c=0; l=0; f=2 } else if(n!="") f=1; else next
@@ -937,16 +948,16 @@ parse_trace() {
 }
 is_private_ip() { [[ "$1" == (10.*|192.168.*|172.(1[6-9]|2[0-9]|3[01]).*|100.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]).*|169.254.*) ]]; }
 
-# Router timing via a 1-hop traceroute aimed AT the router — many routers ignore ping but still
-# answer UDP probes (port-unreachable / "!X"). Aimed at the gateway it stays on the LAN even when a
-# VPN owns the default route. Sets R_RESPONDER (the address that answered — e.g. Meraki 10.128.128.128).
-router_trace() {   # <outfile in ping format>
+# Times the router with a tiny traceroute instead of ping. A lot of routers ignore ping but still
+# answer this. Because it's aimed right at the router it stays on the local network, even with a VPN
+# on. Sometimes a different local address answers (Meraki uses 10.128.128.128), and that's fine.
+router_trace() {   # <save output here, in ping's format>
   local line=$(/usr/sbin/traceroute -n -m 1 -q 10 -w 1 "$GATEWAY" 2>/dev/null | /usr/bin/tail -1)
   R_RESPONDER=$(print -r -- "$line" | /usr/bin/awk '{for(i=2;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/){print $i; exit}}')
   print -r -- "$line" | /usr/bin/awk '{k=0; for(i=2;i<=NF;i++){ if($i=="*") k++; else if($(i+1)=="ms"){ print "icmp_seq=" k " time=" $i; k++ } }}' > "$1"
 }
 
-# DNS: time each configured resolver against public ones. Rows go to DNS_ROWS.
+# Times the Mac's own DNS servers, then 1.1.1.1 and 8.8.8.8 to compare.
 dns_tests() {
   local r d q lbl sum n fails; local -a cfg=(${(s:, :)DNS_SERVERS}); local -a rs=($cfg 1.1.1.1 8.8.8.8); rs=(${(u)rs})
   DNS_ROWS=(); DNS_CFG_AVG=""; DNS_PUB_BEST=""
@@ -972,7 +983,7 @@ dns_tests() {
   done
 }
 
-# Captive portal, IPv6 reachability, path MTU, clock offset.
+# A few quick health checks: hotel-style sign-in page, IPv6, packet size (MTU), and the clock.
 misc_checks() {
   local out s
   out=$(/usr/bin/curl -s -m 4 http://captive.apple.com/hotspot-detect.html 2>/dev/null)
@@ -992,12 +1003,12 @@ misc_checks() {
 }
 
 # --- Speed ------------------------------------------------------------------------
-# Sets DL_MBPS UL_MBPS IDLE_MS LOADED_MS SPEED_SERVER SPEED_NOTE
+# Both of these fill in the download/upload speed and the lag with and without load.
 speed_apple() {
   local f="$SCRATCH/nq.json" rpm
   local pid
-  # -s = sequential: download, then upload. Running both at once (the default) makes them fight
-  # for Wi-Fi airtime and badly under-reports download on many networks.
+  # -s runs download first, then upload. If they run at the same time (Apple's default) they fight
+  # over the Wi-Fi and the download number comes out way too low.
   /usr/bin/networkQuality -c -s -M "$SPEED_MAX_SECONDS" > "$f" 2>/dev/null & pid=$!
   throughput_monitor $pid both; wait $pid
   if [[ ! -s "$f" ]]; then /usr/bin/networkQuality -c -s > "$f" 2>/dev/null & pid=$!; throughput_monitor $pid both; wait $pid; fi
@@ -1006,7 +1017,7 @@ speed_apple() {
   isnum "$dl" || return 1
   DL_MBPS=$(calc "$dl/1000000"); UL_MBPS=$(calc "${ul:-0}/1000000")
   IDLE_MS=$(/usr/bin/plutil -extract base_rtt raw -o - "$f" 2>/dev/null)
-  # Latency under load: the worse (lower RPM) of the download and upload phases.
+  # Lag while busy: use whichever was worse, the download half or the upload half.
   local k v; rpm=""
   for k in dl_responsiveness ul_responsiveness responsiveness; do
     v=$(/usr/bin/plutil -extract $k raw -o - "$f" 2>/dev/null)
@@ -1019,7 +1030,7 @@ speed_apple() {
 
 speed_cloudflare() {
   local up="$SCRATCH/upload.bin" t lp="$SCRATCH/loaded.txt" pid
-  # Download while pinging, to measure latency under load (bufferbloat)
+  # Keep pinging during the download so we can see how much the lag goes up (bufferbloat)
   /sbin/ping -n -i 0.5 -W 1000 "${INTERNET_TARGETS[1]}" > "$lp" 2>&1 & pid=$!
   /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_download}' "https://speed.cloudflare.com/__down?bytes=$CF_DOWN_BYTES" > "$SCRATCH/cf_down.txt" 2>/dev/null &
   local cpid=$!; throughput_monitor $cpid down; wait $cpid; t=$(<"$SCRATCH/cf_down.txt")
@@ -1037,16 +1048,17 @@ speed_cloudflare() {
   SPEED_NOTE="Single-stream test — speed.cloudflare.com"
 }
 
-# --- Simulation mode (testing) --------------------------------------------------------------------
-# Fakes the measurements for a named scenario, then runs the SAME scoring, findings, HUD and results
-# window as a real test — so you can see exactly what a user would see without breaking a network.
-# Combine scenarios with commas, e.g.  NHC_SIMULATE=weak-wifi,vpn ./Network_Health_Check.sh
+# --- Simulation mode (for testing) ----------------------------------------------------------------
+# Makes up the test results for a scenario (weak Wi-Fi, no internet, etc.) and then runs the exact
+# same scoring, findings, and windows as a real test. That way you can see what a user would see
+# without actually breaking a network. You can combine them:
+#   NHC_SIMULATE=weak-wifi,vpn ./Network_Health_Check.sh
 SIM_SCENARIOS=(healthy not-connected no-internet captive-portal packet-loss outage ping-blocked slow-dns
                bufferbloat slow-speed weak-wifi 2ghz vpn broken-ipv6 router-bottleneck isp-problem
                clock-skew proxy slow-ethernet all-bad)
 
 simulate_run() {
-  sim_sleep() { [[ "$ACTION_MODE" == verbose ]] && /bin/sleep "$1"; return 0; }   # no waiting when silent
+  sim_sleep() { [[ "$ACTION_MODE" == verbose ]] && /bin/sleep "$1"; return 0; }   # silent mode doesn't need the pauses
   local sc="$SIMULATE" i host
   [[ "$sc" == all-bad ]] && sc="weak-wifi,packet-loss,outage,slow-dns,bufferbloat,slow-speed,vpn,broken-ipv6,clock-skew,proxy"
   sim() { [[ ",$sc," == *",$1,"* ]]; }
@@ -1063,7 +1075,7 @@ simulate_run() {
     return 1
   fi
 
-  # Healthy baseline -----------------------------------------------------------------
+  # Start from a healthy network -----------------------------------------------------
   CONN_TYPE="Wi-Fi"; PHYS_IF="en0"; PORT_NAME="Wi-Fi"; LOCAL_IP="192.168.1.50"; GATEWAY="192.168.1.1"; DNS_SERVERS="192.168.1.1"
   VPN_ACTIVE=0; VPN_NAME=""; PUB_IP="203.0.113.25"; PUB_ISP="Example Internet Co. (simulated)"; PUB_LOC="Anytown, USA"; CF_COLO="ATL"; CF_WARP="off"
   mac_info
@@ -1080,7 +1092,7 @@ simulate_run() {
   DL_MBPS=250; UL_MBPS=40; IDLE_MS=18; LOADED_MS=35; SPEED_SERVER="Simulated server"; SPEED_NOTE="Simulated result"
   c0=(0 0 0 0); c1=(0 0 0 0)
 
-  # Scenario overrides ---------------------------------------------------------------
+  # Then break whatever the scenario says to break -----------------------------------
   sim weak-wifi   && { WIFI_RSSI=-78; WIFI_NOISE=-92; WS_MIN=-84; WS_AVG=-78; WS_MAX=-72; WIFI_TX=29; WS_TXMIN=6; WS_TXMAX=58; INET_JIT=38; INET_LAT=44; INET_LAG=52; INET_LOSS=1.5; R_LAT=28; R_JIT=22; R_LAG=31; }
   sim 2ghz        && { WIFI_BAND=2.4; WIFI_CH=6; WIFI_WIDTH=20; WIFI_TX=72; WS_TXMIN=58; WS_TXMAX=72; WS_CHANS=6; WIFI_COCHAN=9; WIFI_COCHAN_STRONG=6; WIFI_PHY="802.11n (Wi-Fi 4)"; }
   sim packet-loss && { INET_LOSS=6.5; INET_LAT=35; INET_LAG=96; INET_JIT=24; }
@@ -1102,7 +1114,7 @@ simulate_run() {
     CAPTIVE="unknown"; sim captive-portal && CAPTIVE="detected"
   fi
 
-  # Rows built from the (faked) numbers ------------------------------------------------
+  # Build the detail rows from the made-up numbers -----------------------------------
   if (( NO_INTERNET )); then
     tgt_rows=("1.1.1.1"$'\t'"No reply (ping blocked or unreachable)"$'\t'"na" "8.8.8.8"$'\t'"No reply (ping blocked or unreachable)"$'\t'"na")
   else
@@ -1120,7 +1132,7 @@ simulate_run() {
   (( ! NO_INTERNET )) || [[ "$CAPTIVE" != detected ]] || { web_fail=${#WEB_TARGETS}; for (( i=1; i<=${#WEB_TARGETS}; i++ )); do host="${WEB_TARGETS[$i]#https://}"; web_rows+=("${host%%/*}"$'\t'"Failed to load"$'\t'"bad"); done; }
   finding na "SIMULATED RESULTS (scenario: $SIMULATE) — nothing was actually measured."
 
-  # Walk the HUD through the steps with fake live data so the whole experience can be seen -------
+  # Walk the progress window through each step with fake live numbers ----------------
   local v; local -a sp sd su
   fact "b:$CONN_TYPE" "connected on $PHYS_IF  ·  IP $LOCAL_IP"; fact "w:$PUB_ISP" "internet provider  ·  $PUB_LOC"
   [[ "$CONN_TYPE" == Wi-Fi ]] && fact "$( (( WIFI_RSSI < -70 )) && print r || { (( WIFI_RSSI < -65 )) && print o || print g; }):$WIFI_RSSI dBm" "Wi-Fi signal  ·  $WIFI_BAND GHz  ·  channel $WIFI_CH"
@@ -1156,23 +1168,23 @@ simulate_run() {
 SCRIPT_VERSION="1.1"
 
 # --- Step timing ------------------------------------------------------------------------------------
-# mark <step> — records how long the step since the previous mark took (log + report + JSON).
+# mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
 mark() { local n=$EPOCHREALTIME; TIMINGS+=("$1 $(calc "$n-$T_LAST")"); T_LAST=$n; }
 timings_text() { local t out=""; for t in $TIMINGS; do out+="${out:+ · }${t% *} ${t#* }s"; done; print -r -- "$out · total $(calc "$EPOCHREALTIME-$T_START")s"; }
 
 # --- Cancel -------------------------------------------------------------------------------------------
-# The HUD's Cancel button writes to CANCEL_FILE (made world-writable because the HUD runs as the
-# logged-in user while this script may run as root). Checked in every loop and between steps.
+# When the user clicks Cancel, the window writes to CANCEL_FILE. We check it in every loop and between
+# steps, and if it's there we clean up and quit.
 check_cancel() {
   [[ -s "$CANCEL_FILE" ]] || return 0
   logMe INFO "User cancelled the test."
   kill_spinner; stop_children
-  exit 0      # a user cancel is not a failure (keeps the Jamf policy green)
+  exit 0      # the user cancelling isn't an error, so Jamf shouldn't mark the policy as failed
 }
 
 # --- JSON results (optional) ----------------------------------------------------------------------
-# SAVE_JSON=true writes $JSON_DIR/last.json and appends one line per run to history.jsonl — handy for
-# comparing runs before/after a fix, or for a Jamf Extension Attribute to read the last score.
+# If SAVE_JSON=true, each run saves last.json and adds a line to history.jsonl. Handy for comparing
+# before and after a fix, or for a Jamf Extension Attribute to read the last score.
 jstr() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/ }"; print -rn -- "\"$s\""; }
 jnum() { isnum "$1" && print -rn -- "$1" || print -rn -- null; }
 write_json() {
@@ -1202,7 +1214,7 @@ write_json() {
     print -r -- "]"
     print -r -- "}"
   } > "$f"
-  # one-line copy for the history log (trimmed to JSON_HISTORY_MAX runs)
+  # add a one-line copy to the history file, and only keep the last JSON_HISTORY_MAX runs
   /usr/bin/tr -d '\n' < "$f" | /usr/bin/sed 's/  */ /g' >> "$JSON_DIR/history.jsonl"; print >> "$JSON_DIR/history.jsonl"
   /usr/bin/tail -n "$JSON_HISTORY_MAX" "$JSON_DIR/history.jsonl" > "$JSON_DIR/.h.tmp" 2>/dev/null && /bin/mv "$JSON_DIR/.h.tmp" "$JSON_DIR/history.jsonl"
   /bin/chmod 644 "$f" "$JSON_DIR/history.jsonl" 2>/dev/null
@@ -1211,7 +1223,7 @@ write_json() {
 
 ####################################################################################################
 #
-# Run all tests -> fills $DATA_FILE / $FIND_FILE / $REPORT_FILE and the score variables
+# Run all the tests, then build the scores, findings, and results rows
 #
 ####################################################################################################
 run_tests() {
@@ -1225,7 +1237,7 @@ run_tests() {
   typeset -ga TIMINGS DNS_ROWS; TIMINGS=(); DNS_ROWS=(); T_START=$EPOCHREALTIME; T_LAST=$EPOCHREALTIME
   : > "$LIVE_FILE"
 
-  # Progress ranges per step (from to) — speed is the longest step when it runs.
+  # How much of the progress bar each step gets. The speed test is the longest, so it gets the most.
   typeset -ga P_CON P_RSP P_WEB P_SPD P_SCR
   if [[ "$SPEED_ENGINE" == off ]]; then P_CON=(0 12) P_RSP=(12 72) P_WEB=(72 96) P_SPD=(96 96) P_SCR=(96 100)
   else                                  P_CON=(0 8)  P_RSP=(8 46)  P_WEB=(46 62) P_SPD=(62 96) P_SCR=(96 100); fi
@@ -1257,7 +1269,7 @@ run_tests() {
   logMe INFO "Interface $PHYS_IF ($PORT_NAME) ip=$LOCAL_IP gw=$GATEWAY vpn=$VPN_ACTIVE public=$PUB_IP"
   check_cancel; mark connect
 
-  # 2. Responsiveness: pings + (in the background) path trace, Wi-Fi sampling, counters -------------
+  # 2. Responsiveness: start the pings, plus traceroute and Wi-Fi readings in the background --------
   local router_file="$SCRATCH/ping_router.txt" trace_file="$SCRATCH/trace.txt" wifi_file="$SCRATCH/wifi_samples.txt"
   : > "$router_file"; : > "$trace_file"; : > "$wifi_file"
   c0=($(counters))
@@ -1276,8 +1288,9 @@ run_tests() {
     check_cancel
     t=$(( TEST_SECONDS - (SECONDS - start) )); (( t < 0 )) && t=0
     if [[ "$ACTION_MODE" == verbose ]]; then
-      # Live readout uses its own one-shot ping: ping's file output is block-buffered, so reading the
-      # measurement files would update in bursts. (Display only — the stats come from the files.)
+      # The live number on screen uses its own quick ping. The real pings only write to their files in
+      # chunks, so reading those would make the number jump around. (This one is just for show, the
+      # actual results come from the real pings.)
       last=$(/sbin/ping -n -c 1 -t 1 "${INTERNET_TARGETS[1]}" 2>/dev/null | /usr/bin/awk -F'time=' '/time=/{split($2,a," "); print a[1]; exit}')
       if isnum "$last"; then lspk+=($last); (( ${#lspk} > 40 )) && lspk=(${lspk[-40,-1]})
         live_metric "$(lag_code $last):$(r0 $last) ms" "ping to ${INTERNET_TARGETS[1]}  ·  ${t}s left" "${(j:,:)lspk}"
@@ -1288,16 +1301,16 @@ run_tests() {
     fi
   done
   kill $ping_pids 2>/dev/null; wait $ping_pids 2>/dev/null
-  # give the path trace a few more seconds, then stop it
+  # give traceroute a few more seconds to finish, then stop it
   for (( i=0; i<12; i++ )); do check_cancel; kill -0 $trace_pid 2>/dev/null || break; /bin/sleep 0.5; done
   kill $trace_pid 2>/dev/null; wait $trace_pid 2>/dev/null
-  # the sampler writes its readings only when it finishes — give it a moment rather than cutting it off
+  # the Wi-Fi reader only saves when it's done, so give it a moment instead of cutting it off
   if [[ -n "$wifi_pid" ]]; then
     for (( i=0; i<8; i++ )); do kill -0 $wifi_pid 2>/dev/null || break; /bin/sleep 0.5; done
     kill $wifi_pid 2>/dev/null; wait $wifi_pid 2>/dev/null
   fi
 
-  # Analyse internet targets
+  # Crunch the ping results for each internet target
   INET_METHOD="ICMP ping"
   for (( i=1; i<=${#INTERNET_TARGETS}; i++ )); do
     ping_stats "${inet_files[$i]}"
@@ -1310,7 +1323,7 @@ run_tests() {
     fi
   done
 
-  # ICMP blocked everywhere? fall back to HTTPS connect timing
+  # Ping blocked everywhere? Then time HTTPS connections instead
   if (( n_ok == 0 )); then
     INET_METHOD="HTTPS connect (ICMP blocked)"
     tgt_rows=()
@@ -1337,7 +1350,7 @@ run_tests() {
     fact "$(lag_code $INET_LAG):$(r0 $INET_LAG) ms" "internet lag  ·  jitter $(ms $INET_JIT)  ·  ${INET_LOSS}% loss"
   fi
 
-  # Router (first hop): ping, else traceroute hop 1 (routers often ignore ping but answer that)
+  # The router: try ping first, and if it ignores ping, use the traceroute trick
   ROUTER_OK=0; R_METHOD=""
   if [[ -n "$GATEWAY" ]]; then
     ping_stats "$router_file"
@@ -1345,20 +1358,20 @@ run_tests() {
     else local pc=$PING_COUNT; router_trace "$router_file"; PING_COUNT=10; ping_stats "$router_file"; PING_COUNT=$pc
          if (( P_RECV > 0 )) && is_private_ip "$R_RESPONDER"; then
            R_METHOD="traceroute (router ignores ping$([[ $R_RESPONDER != $GATEWAY ]] && print "; answered as $R_RESPONDER"))"
-           P_LOSS="-"; P_LAG=$P_AVG     # routers rate-limit these replies, so "loss" here isn't real loss
+           P_LOSS="-"; P_LAG=$P_AVG     # routers limit how often they answer these, so missing replies here aren't real packet loss
          else P_RECV=0; fi
     fi
     if (( P_RECV > 0 )); then ROUTER_OK=1; R_LAT=$P_AVG; R_JIT=$P_JIT; R_LOSS=$P_LOSS; R_LAG=$P_LAG; fi
   fi
 
-  # Path hops + ISP first hop
+  # The traceroute hops, and the first hop that belongs to the ISP
   hops=("${(@f)$(parse_trace "$trace_file")}")
   ISP_HOP=""; ISP_HOP_MS=""
   for t in $hops; do local -a p=("${(@ps:\t:)t}")
     [[ "${p[2]}" != "*" ]] && ! is_private_ip "${p[2]}" && isnum "${p[3]}" && { ISP_HOP="${p[2]}"; ISP_HOP_MS="${p[3]}"; break; }
   done
 
-  # Wi-Fi during the test
+  # How the Wi-Fi signal did during the test
   WS_MIN=""; WS_AVG=""; WS_MAX=""; WS_TXMIN=""; WS_TXMAX=""; WS_CHANS=""
   if [[ -s "$wifi_file" ]]; then
     read -r WS_MIN WS_AVG WS_MAX WS_TXMIN WS_TXMAX WS_CHANS <<< "$(/usr/bin/awk '$1<0{ n++; s+=$1; if(!mn||$1<mn)mn=$1; if(!mx||$1>mx)mx=$1;
@@ -1368,7 +1381,7 @@ run_tests() {
 
   check_cancel; mark responsiveness
 
-  # 3. Web, DNS & network checks -------------------------------------------------------------
+  # 3. Websites, DNS, and the other quick checks -----------------------------------------
   local code dns conn tls ttfb hv rip
   if (( ! NO_INTERNET )); then
     spin_status 2 "Testing websites & DNS" "Loading ${#WEB_TARGETS} common sites…" ${P_WEB[1]} ${P_WEB[2]} $(( ${#WEB_TARGETS} + 4 ))
@@ -1376,7 +1389,7 @@ run_tests() {
       check_cancel
       host="${WEB_TARGETS[$i]#https://}"; host="${host%%/*}"
       local try
-      for try in 1 2; do     # one retry, so a single blip isn't reported as a failed site
+      for try in 1 2; do     # try twice, so one random blip doesn't show up as a failed site
         read -r code dns conn tls ttfb hv rip <<< "$(/usr/bin/curl -s -o /dev/null -m 10 -w '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_version} %{remote_ip}' "${WEB_TARGETS[$i]}" 2>/dev/null)"
         [[ -n "$code" && "$code" != 000 ]] && break
       done
@@ -1413,13 +1426,13 @@ run_tests() {
     mark speed
   fi
   c1=($(counters))
-  fi   # end real measurements (simulation fills the same variables in simulate_run)
+  fi   # done with the real tests (simulation mode fills in the same things itself)
 
   # 5. Scores -------------------------------------------------------------------------
   spin_status 4 "Scoring results" "Crunching the numbers…" ${P_SCR[1]} 99 1
-  # Responsiveness is driven by lag (jitter + loss feed in through lag).
+  # Responsiveness is mostly based on lag.
   if (( NO_INTERNET )); then RESP_SCORE=0; else RESP_SCORE=$(interp "$INET_LAG" "0:100 20:100 50:92 100:78 200:55 400:25 800:0"); fi
-  # Bufferbloat grade (needed below): how much latency rises under load
+  # Bufferbloat grade: how much worse the lag gets when the connection is busy
   BLOAT_MS=""; BLOAT_GRADE=""
   if isnum "$LOADED_MS" && isnum "$IDLE_MS"; then
     BLOAT_MS=$(calc "$LOADED_MS-$IDLE_MS"); (( BLOAT_MS < 0 )) && BLOAT_MS=0
@@ -1429,8 +1442,8 @@ run_tests() {
     elif (( BLOAT_MS < 400 )); then BLOAT_GRADE="D"
     else BLOAT_GRADE="F"; fi
   fi
-  # Things users feel that lag alone under-counts: jitter (choppy calls), packet loss, and lag that
-  # balloons when the connection is busy (bufferbloat).
+  # Then take points off for the stuff people really notice that lag alone doesn't show: jitter
+  # (choppy calls), packet loss, and lag that shoots up when the connection is busy.
   if (( ! NO_INTERNET )); then
     local pen=0
     isnum "$INET_JIT" && (( INET_JIT > 10 )) && pen=$(calc "$pen+($INET_JIT-10)*0.5")
@@ -1447,10 +1460,11 @@ run_tests() {
   else
     NET_SCORE=$RESP_SCORE
   fi
-  # The overall score is scaled down by reliability when reliability < 90
+  # If the connection dropped out (reliability under 90), pull the overall score down too
   (( REL_SCORE < 90 )) && NET_SCORE=$(r0 "$(calc "$NET_SCORE*$REL_SCORE/90")")
 
-  # Video-call readiness (Zoom/Teams guidance: latency ≤150 ms, jitter ≤30 ms, loss <1%)
+  # Video call check, based on what Zoom and Teams recommend (lag 150 ms or less, jitter 30 ms or
+  # less, under 1% loss)
   if (( NO_INTERNET )); then VIDEO_STATUS=bad; VIDEO_TEXT="Not ready — no internet"
   elif (( INET_LAT <= 150 && INET_JIT <= 30 && INET_LOSS < 1 && REL_SCORE >= 90 )); then
     VIDEO_STATUS=good; VIDEO_TEXT="Ready"
@@ -1458,7 +1472,7 @@ run_tests() {
   elif (( INET_LAT <= 250 && INET_JIT <= 50 && INET_LOSS < 3 )); then VIDEO_STATUS=ok; VIDEO_TEXT="Usable — may stutter or freeze at times"
   else VIDEO_STATUS=bad; VIDEO_TEXT="Poor — expect freezing, robotic audio, or drops"; fi
 
-  # Headline (pairs responsiveness with speed)
+  # The headline (like "Fast & Responsive") depends on how responsiveness and speed did
   local rgood=0 sgood=0; (( RESP_SCORE >= 80 )) && rgood=1; [[ -n "$SPEED_SCORE" ]] && (( SPEED_SCORE >= 80 )) && sgood=1
   if (( NO_INTERNET )); then
     HEADLINE="No Internet"; SUBHEADLINE="Connected to ${CONN_TYPE}, but nothing on the internet answered. Check the network, captive portal, or VPN."
@@ -1473,12 +1487,12 @@ run_tests() {
   else                            HEADLINE="Laggy & Slow"; SUBHEADLINE="Your connection is slow to react and short on bandwidth. Most online work will feel sluggish."
   fi
 
-  # Counter deltas
+  # How many errors/resends happened during the test
   local ierr=$(( ${c1[1]:-0} - ${c0[1]:-0} )) oerr=$(( ${c1[2]:-0} - ${c0[2]:-0} ))
   local tsent=$(( ${c1[3]:-0} - ${c0[3]:-0} )) tretx=$(( ${c1[4]:-0} - ${c0[4]:-0} )) retx_pct=""
   (( tsent > 100 )) && retx_pct=$(calc "$tretx*100/$tsent")
 
-  # 6. Findings (plain English) ---------------------------------------------------------
+  # 6. Findings - the plain-English "What we found" list -------------------------------
   (( VPN_ACTIVE )) && finding na "Connected through a VPN (${VPN_NAME}) — internet results reflect the VPN path."
   [[ "$CAPTIVE" == detected ]] && finding bad "A captive portal (sign-in page) is intercepting traffic — open a browser and finish signing in to this network."
   if (( NO_INTERNET )); then
@@ -1530,20 +1544,20 @@ run_tests() {
   [[ -n "$retx_pct" ]] && (( retx_pct >= 2 )) && finding ok "TCP retransmits at ${retx_pct}% — packets are being lost and resent."
   [[ "$MAC_LOWPOWER" == 1 ]] && finding na "Low Power Mode is on — it can limit network performance."
   [[ -s "$FIND_FILE" ]] || finding good "No problems found — your connection looks healthy."
-  # Don't say "you're good to go" next to red findings.
+  # Don't say "you're good to go" if there are red problems in the list.
   local nbad=$(/usr/bin/grep -c "^bad" "$FIND_FILE")
   if (( nbad > 0 && NET_SCORE >= 80 )); then
     SUBHEADLINE="Speed and responsiveness look good, but we found $nbad issue$( (( nbad > 1 )) && print s) below that can still cause problems."
   fi
 
-  # Finish line: the bar hits 100%, the score shows, then the results window opens.
+  # Finish up: fill the bar to 100%, flash the score, then open the results window.
   if [[ "$ACTION_MODE" == verbose ]]; then
     fact "$(band_code $NET_SCORE):$NET_SCORE" "Network Score  ·  $(band_label $NET_SCORE)  ·  Video calls: ${VIDEO_TEXT%% —*}"
     spin_status 5 "All done — $HEADLINE" "Opening your results…" 100 100 0.1
     /bin/sleep 2.5
   fi
 
-  # 7. Detail rows — user-facing first, then the "For IT" block ------------------------------
+  # 7. Detail rows - the stuff users care about first, then the "For IT" section --------------
   section "Connection" "network"
   row "Connection type" "$CONN_TYPE ($PHYS_IF)" na
   [[ "$CONN_TYPE" == "Wi-Fi" ]] && row "Network name" "$WIFI_SSID" na
@@ -1658,8 +1672,8 @@ run_tests() {
 
   if (( ${#hops} )) && [[ -n "${hops[1]}" ]]; then
     section "Network Path (traceroute to ${INTERNET_TARGETS[1]}$( (( VPN_ACTIVE )) && print ", through VPN"))" "point.topleft.down.to.point.bottomright.curvepath"
-    # Flag the hop where latency jumps — that's where delay enters the path. (Lost probes on middle
-    # hops are usually just routers rate-limiting traceroute, so they're shown but not flagged.)
+    # Point out the hop where the time jumps, since that's where the slowdown starts. (Missed replies
+    # in the middle are usually just routers ignoring traceroute, so we show them but don't flag them.)
     local prev=0 jump
     for t in $hops; do local -a p=("${(@ps:\t:)t}")
       if [[ "${p[2]}" == "*" ]]; then row "  Hop ${p[1]}" "no reply (hop hides itself — normal)" na
@@ -1700,7 +1714,7 @@ run_tests() {
   return 0
 }
 
-# Plain-text report (saved to Desktop / printed in silent mode), built from the same rows.
+# The text report (saved to the Desktop, or printed in silent mode). Uses the same rows as the window.
 build_report() {
   local tag
   {
@@ -1731,7 +1745,7 @@ build_report() {
     done < "$DATA_FILE"
     print -r -- ""
     print -r -- "Score bands: 90+ Excellent, 80 Good, 70 Okay, 50 Fair, <50 Poor."
-    # Raw output for IT
+    # Raw command output at the bottom, for IT
     if [[ -n "$PHYS_IF" ]]; then
       print -r -- ""; print -r -- "==================== RAW OUTPUT ===================="
       print -r -- ""; print -r -- "--- traceroute -n ${INTERNET_TARGETS[1]}"; /bin/cat "$SCRATCH/trace.txt" 2>/dev/null
@@ -1752,7 +1766,7 @@ build_report() {
 logMe INFO "============================================================"
 logMe INFO "Network Health Check — mode=${ACTION_MODE}; speed=${SPEED_ENGINE}; duration=${TEST_SECONDS}s; user=${targetUser}; running as $(/usr/bin/id -un)"
 
-# Simulation helpers: "list" prints the scenarios; unknown names are rejected.
+# Simulation: "list" just prints the scenarios, and a typo in a scenario name stops the script.
 if [[ "$SIMULATE" == list ]]; then print -r -- "Scenarios: ${SIM_SCENARIOS[*]}  (combine with commas)"; exit 0; fi
 if [[ -n "$SIMULATE" ]]; then
   for _s in ${(s:,:)SIMULATE}; do
