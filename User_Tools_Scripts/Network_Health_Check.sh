@@ -1006,11 +1006,14 @@ wifi_neighbors() {
 
 # Turns the traceroute output into one line per hop: hop number, address, average time, missed replies.
 # Some hops answer from a few different addresses and traceroute puts those on extra lines, so we
-# fold them back into the same hop to get a fair average.
+# fold them back into the same hop. We use the middle value of the replies, because busy routers
+# sometimes answer traceroute slowly and one slow reply shouldn't make the whole hop look slow.
 parse_trace() {
-  /usr/bin/awk 'function flush(){ if(n!="") printf "%s\t%s\t%s\t%d\n", n, (ip==""?"*":ip), (c?sprintf("%.1f",s/c):"-"), l }
-    { start=($0 ~ /^ *[0-9]+ /); if(start){ flush(); n=$1; ip=""; s=0; c=0; l=0; f=2 } else if(n!="") f=1; else next
-      for(i=f;i<=NF;i++){ if($i=="*") l++; else if($(i+1)=="ms" && $i ~ /^[0-9.]+$/){s+=$i;c++} else if(ip=="" && $i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) ip=$i } }
+  /usr/bin/awk 'function med(   i,j,t){ for(i=2;i<=c;i++){ t=v[i]; for(j=i-1;j>=1 && v[j]>t;j--) v[j+1]=v[j]; v[j+1]=t }
+                 return (c%2) ? v[(c+1)/2] : (v[c/2]+v[c/2+1])/2 }
+    function flush(){ if(n!="") printf "%s\t%s\t%s\t%d\n", n, (ip==""?"*":ip), (c?sprintf("%.1f",med()):"-"), l }
+    { start=($0 ~ /^ *[0-9]+ /); if(start){ flush(); n=$1; ip=""; c=0; l=0; f=2 } else if(n!="") f=1; else next
+      for(i=f;i<=NF;i++){ if($i=="*") l++; else if($(i+1)=="ms" && $i ~ /^[0-9.]+$/){v[++c]=$i+0} else if(ip=="" && $i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) ip=$i } }
     END{ flush() }' "$1" 2>/dev/null
 }
 is_private_ip() { [[ "$1" == (10.*|192.168.*|172.(1[6-9]|2[0-9]|3[01]).*|100.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7]).*|169.254.*) ]]; }
@@ -1728,7 +1731,9 @@ run_tests() {
   # real packet loss on the connection shows up on EVERY target, so if only one server is dropping
   # pings, that's the server limiting ping (common on VPNs), not the user's connection.
   local min_loss=999 min_lag=999999 max_loss=0 lossy="" min_lost_n=0
+  local -a T_LAT T_JIT T_LOSS T_LAG
   track() { local n=0; [[ "$P_LOST" != "-" ]] && n=${#${(s:,:)P_LOST}}
+            T_LAT+=($P_AVG); T_JIT+=($P_JIT); T_LOSS+=($P_LOSS); T_LAG+=($P_LAG)
             (( P_LOSS < min_loss )) && { min_loss=$P_LOSS; min_lost_n=$n; }; (( P_LAG < min_lag )) && min_lag=$P_LAG
             (( P_LOSS > max_loss )) && { max_loss=$P_LOSS; lossy="$1"; }; }
   INET_METHOD="ICMP ping"
@@ -1766,7 +1771,14 @@ run_tests() {
     NO_INTERNET=1; INET_LAT="-"; INET_JIT="-"; INET_LOSS=100; INET_LAG="-"; REL_PCT=0; OUTAGE_LONGEST_S=$TEST_SECONDS; OUTAGE_EVENTS=1
     LOSS_EFF=100; INET_LOST_N=$PING_COUNT
   else
-    INET_LAT=$(calc "$sum_lat/$n_ok"); INET_JIT=$(calc "$sum_jit/$n_ok"); INET_LOSS=$min_loss; INET_LAG=$min_lag
+    # Average latency, jitter and lag over the same servers, leaving out any server that lost a lot
+    # more pings than the best one (that's the server limiting ping, see below). Loss = the best server's.
+    local k=0 sl=0 sj=0 sg=0
+    for (( i=1; i<=${#T_LAT}; i++ )); do
+      (( T_LOSS[i] <= min_loss + 5 )) || continue
+      (( k++ )); sl=$(calc "$sl+${T_LAT[i]}"); sj=$(calc "$sj+${T_JIT[i]}"); sg=$(calc "$sg+${T_LAG[i]}")
+    done
+    INET_LAT=$(calc "$sl/$k"); INET_JIT=$(calc "$sj/$k"); INET_LAG=$(calc "$sg/$k"); INET_LOSS=$min_loss
     # One lost ping out of ~40 is just noise, so it doesn't count against the score or the findings
     INET_LOST_N=$min_lost_n; LOSS_EFF=$INET_LOSS; (( INET_LOST_N <= 1 )) && LOSS_EFF=0
     # remember if one server dropped a lot more than the rest, so we can explain it
@@ -2031,7 +2043,7 @@ run_tests() {
     case $WIFI_PHY in 11ax) WIFI_PHY="802.11ax (Wi-Fi 6)";; 11ac) WIFI_PHY="802.11ac (Wi-Fi 5)";; 11n) WIFI_PHY="802.11n (Wi-Fi 4)";; 11be) WIFI_PHY="802.11be (Wi-Fi 7)";; 11[abg]) WIFI_PHY="802.$WIFI_PHY";; esac
     [[ "$WIFI_SEC" == (None|Open|none) ]] && WIFI_SEC="None (open network, no password)"
     [[ -n "$WIFI_PHY" ]] && row "Wi-Fi standard" "$WIFI_PHY" na
-    if isnum "$WIFI_TX"; then s=good; (( WIFI_TX < 200 )) && s=ok; (( WIFI_TX < 50 )) && s=bad
+    if isnum "$WIFI_TX"; then s=good; (( WIFI_TX < 80 )) && s=ok; (( WIFI_TX < 30 )) && s=bad   # 173 is the max on a 20 MHz channel, so only flag really low rates
       row "Link rate (Tx)" "$(r0 $WIFI_TX) Mbps$(isnum "$WS_TXMIN" && [[ "$WS_TXMIN" != "$WS_TXMAX" ]] && print " (ranged $WS_TXMIN–$WS_TXMAX during test)")" $s; fi
     [[ -n "$WIFI_SEC" ]] && row "Security" "$WIFI_SEC" "$([[ ${WIFI_SEC:l} == (none|open)* ]] && print ok || print na)"
   fi
