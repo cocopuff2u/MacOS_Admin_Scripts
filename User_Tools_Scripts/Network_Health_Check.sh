@@ -105,7 +105,9 @@
 #               badge; click a badge (or hover) to see what the row measures, what's normal, and what to
 #               do about it, and the saved report prints the same under every warning or problem.
 #               GlobalProtect now shows the real gateway name (from its own log) and the tunnel
-#               transport (e.g. IPsec over UDP 4501). Tested live with GlobalProtect. - @cocopuff2u
+#               transport (e.g. IPsec over UDP 4501). A smaller MTU is rated Good on a VPN (it's how
+#               VPNs work). Test sites: wikipedia.org replaces www.microsoft.com, which failed too
+#               often. Tested live with GlobalProtect. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -141,7 +143,7 @@ CF_UP_BYTES=10000000    # cloudflare only: how much to upload (bytes)
 WEB_TARGETS=(           # sites we time. Swap in whatever your users actually live in (Okta, Slack, etc.)
     "https://www.google.com"
     "https://www.apple.com"
-    "https://www.microsoft.com"
+    "https://www.wikipedia.org"
     "https://login.microsoftonline.com"
     "https://www.cloudflare.com"
     "https://zoom.us"
@@ -421,7 +423,7 @@ typeset -gA WHY; WHY=(
   "dns-server"                     "How long this DNS server takes to look up a name, averaged over a few lookups. Under 60 ms is fast; up to 150 ms is okay; slower than that makes every site take longer to start loading. 'No answer' means the server didn't respond at all. If your own DNS is much slower than the public ones, switching DNS servers helps."
   "In-browser DNS (avg)"           "How long the name lookups took as part of loading the test websites, the way a browser experiences them. Under 60 ms is fast; up to 150 ms is okay; slower means every new site waits on DNS before it can even start."
   "Captive portal"                 "A sign-in page (hotel, airport, guest Wi-Fi) is intercepting traffic. Nothing works until you open a browser and finish signing in to the network."
-  "Path MTU"                       "The largest packet that gets through to the internet in one piece. 1500 is normal. Smaller (common on VPNs, PPPoE and some hotspots) is usually fine, but a few apps and sites misbehave with small packets, and a VPN that doesn't match it can make big transfers stall."
+  "Path MTU"                       "The largest packet that gets through to the internet in one piece. 1500 is normal on a plain connection. On a VPN, around 1400 is expected and rated Good, because the tunnel needs room for its own headers. It's only flagged when it's smaller than that on a VPN, or under 1500 without one, since a few apps and sites misbehave with small packets."
   "Clock offset vs time.apple.com" "How far the Mac's clock is from real time. Within 2 seconds is normal. More than that can break secure sites, VPN sign-in and two-factor codes; more than a minute usually will. Turn on automatic time in System Settings."
   "Interface errors (during test)" "Packets the network card counted as damaged or dropped during the test. Should be zero. On Ethernet it points to a bad cable, port, or dock; on Wi-Fi to interference or a weak signal."
   "TCP retransmits (during test)"  "The share of data the Mac had to send again because it didn't arrive. Under 2% is normal. Higher means data is being lost somewhere on the path, which slows everything down even when pings look fine."
@@ -2241,7 +2243,12 @@ run_tests() {
       finding ok "Speed is low (↓ $(r0 $DL_MBPS) / ↑ $(r0 ${UL_MBPS:-0}) Mbps) — Wi-Fi signal, router limits, congestion, or VPN can all cap it."
     fi
     [[ "$IPV6_NET" == broken && "$HIDE_IPV6" != true ]] && finding bad "IPv6 is configured but doesn't reach the internet — sites may hang a few seconds before loading."
-    [[ -n "$PMTU" ]] && (( PMTU < 1500 )) && finding ok "Path MTU is $PMTU (below 1500) — can break large packets on VPNs and some apps."
+    # A smaller MTU is how VPNs work (the tunnel needs room for its own headers), so on a VPN it's only
+    # worth a mention when it's really small. Off a VPN, anything under 1500 is worth a look.
+    if [[ -n "$PMTU" ]]; then
+      if (( VPN_ACTIVE )); then (( PMTU < 1280 )) && finding ok "Path MTU is only $PMTU even for a VPN — large packets and some apps may break."
+      else (( PMTU < 1500 )) && finding ok "Path MTU is $PMTU (below 1500) — can break large packets and some apps."; fi
+    fi
   fi
   if isnum "$CLOCK_OFF_MS" && (( ${CLOCK_OFF_MS#-} > 60000 )); then
     finding bad "The Mac's clock is off by $(( ${CLOCK_OFF_MS#-} / 1000 ))s — this breaks secure sites, VPN, and sign-ins."
@@ -2464,7 +2471,9 @@ run_tests() {
   section "Health Checks" "stethoscope"
   row "Captive portal" "$( case $CAPTIVE in none) print "None";; detected) print "Detected — sign-in page intercepting";; *) print "Couldn't check";; esac)" \
       "$( case $CAPTIVE in none) print good;; detected) print bad;; *) print na;; esac)"
-  row "Path MTU" "${PMTU:-couldn't test}" "$( [[ -z $PMTU ]] && print na || { (( PMTU < 1500 )) && print ok || print good; })"
+  if [[ -z "$PMTU" ]]; then row "Path MTU" "couldn't test" na
+  elif (( VPN_ACTIVE )); then row "Path MTU" "$PMTU$( (( PMTU < 1500 )) && print " · normal on a VPN")" "$( (( PMTU < 1280 )) && print ok || print good)"
+  else row "Path MTU" "$PMTU" "$( (( PMTU < 1500 )) && print ok || print good)"; fi
   isnum "$CLOCK_OFF_MS" && row "Clock offset vs time.apple.com" "$CLOCK_OFF_MS ms" "$( (( ${CLOCK_OFF_MS#-} > 60000 )) && print bad || { (( ${CLOCK_OFF_MS#-} > 2000 )) && print ok || print good; })"
   row "Interface errors (during test)" "in $ierr · out $oerr" "$( (( ierr + oerr )) && print ok || print good)"
   [[ -n "$retx_pct" ]] && row "TCP retransmits (during test)" "${retx_pct}% ($tretx of $tsent)" "$( (( retx_pct >= 2 )) && print ok || print good)"
