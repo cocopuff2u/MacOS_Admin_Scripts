@@ -98,6 +98,14 @@
 #               Cancel works right away; DNS and MDM checks run at the same time so they're quick;
 #               the progress window says what it's checking. Fixed a hang on Macs without Cisco VPN
 #               profiles. IPv6 hidden by default. - @cocopuff2u
+# 1.3 9/28/26 - Fixed a crash at the end of "Testing websites & DNS" whenever a VPN tunnel is up (the VPN
+#               log line tripped over a "(" in the tunnel mode text and the script quit with a "bad
+#               pattern" error). Easier-to-read Details: values sit in their own column and wrap instead
+#               of being cut off, and each rated row gets a green Good / yellow Warning / red Problem
+#               badge; click a badge (or hover) to see what the row measures, what's normal, and what to
+#               do about it, and the saved report prints the same under every warning or problem.
+#               GlobalProtect now shows the real gateway name (from its own log) and the tunnel
+#               transport (e.g. IPsec over UDP 4501). Tested live with GlobalProtect. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -356,10 +364,70 @@ throughput_monitor() {
   done
 }
 
-# Adding rows to the results. The status controls the colored dot: good | ok | bad | na (no dot)
+# Adding rows to the results. The status controls the colored badge: good | ok | bad | na (no badge)
+#   row <label> <value> [status] [why-key]
+# Rated rows also carry a plain-English "why" (what it measures, what's normal, what to do) that the
+# window shows when the badge is clicked, and the report prints under the row. It comes from the WHY
+# table below, looked up by the why-key if given, otherwise by the row's label.
 heading() { print -r -- "H"$'\t'"$(clean "$1")" >> "$DATA_FILE"; }
 section() { print -r -- "S"$'\t'"$(clean "$1")"$'\t'"$2" >> "$DATA_FILE"; }
-row()     { print -r -- "R"$'\t'"$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"${3:-na}" >> "$DATA_FILE"; }
+row() {
+  local w=""; [[ "${3:-na}" != na ]] && w="${WHY[${4:-${1##[[:space:]]#}}]}"
+  print -r -- "R"$'\t'"$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"${3:-na}"$'\t'"$(clean "$w")" >> "$DATA_FILE"
+}
+typeset -gA WHY; WHY=(
+  "Video calls"                    "A summary of how a video call would feel, from the lag, jitter, packet loss, bufferbloat and reliability measured. Ready = lag under 150 ms, jitter under 30 ms, no loss, and no drop-outs. Usable = lag under 250 ms, jitter under 50 ms, loss under 3%. Anything worse means freezing, robotic audio, or dropped calls."
+  "Signal strength (RSSI)"         "How strong the Wi-Fi signal is where the Mac sits, in dBm (closer to 0 is stronger). Good is -65 dBm or better. Below -65 dBm speeds start to drop; below -70 dBm expect slowdowns and drop-outs. Move closer to the access point, remove obstacles, or use Ethernet."
+  "Signal during test"             "The weakest Wi-Fi signal seen while the test ran. A dip below -75 dBm, even briefly, is enough to stall a call or a download. Usually means the Mac is at the edge of coverage or something is interfering."
+  "Signal-to-noise (SNR)"          "How far the Wi-Fi signal is above the background noise, in dB. 25 dB or more is clean. Below 25 dB the connection has to slow down to stay reliable; below 15 dB it becomes unstable. Noise comes from other networks, microwaves, and Bluetooth devices."
+  "Band / channel"                 "Which Wi-Fi band the Mac is on. 2.4 GHz reaches further but is slower and shares the air with far more devices, so it's flagged as worth a look. 5 GHz or 6 GHz is faster and less crowded. If the network offers both, the Mac usually picks the better one on its own; if not, ask IT to check the access point."
+  "Link rate (Tx)"                 "The speed the Mac and the access point agreed on for sending data, in Mbps. It falls as the signal gets weaker. Under 80 Mbps is slow for modern Wi-Fi; under 30 Mbps means the connection is barely holding on. A stronger signal or a less crowded channel raises it."
+  "Security"                       "Whether the Wi-Fi network is encrypted. An open network means anyone nearby can read the traffic that isn't already encrypted by the app or a VPN. Fine for a coffee shop with a VPN on, not fine for work without one."
+  "Internet"                       "Nothing on the internet answered during the test. Either the Mac isn't really online (captive portal, cable, Wi-Fi), or a firewall or VPN is blocking everything."
+  "Internet lag"                   "The lag people actually feel: how long the connection takes to react, as seen from this Mac to the internet, including any bad moments during the test. Under 50 ms is great. Up to 120 ms is fine for most things. Above that, calls and remote sessions feel sluggish."
+  "Internet latency"               "The average round-trip time to the internet, in ms. Under 50 ms is great; up to 120 ms is fine. Higher than that usually means a long path (VPN, satellite, far-away server) or a congested link."
+  "Jitter"                         "How much the lag jumps around from one moment to the next. Steady is more important than fast for calls. Under 10 ms is smooth; up to 30 ms is okay; above 30 ms audio and video start to stutter, usually because the link is busy or the Wi-Fi is weak."
+  "Packet loss"                    "The share of pings that never came back, counted only when every server missed the same ones (so one grumpy server doesn't count). Under 1% is normal. 1-3% causes occasional glitches. 3% or more breaks calls and slows everything, since data has to be re-sent. 'Pings only' means only ping is being dropped and real traffic is fine."
+  "Router (your network)"          "How quickly your own router answers. This should be nearly instant: under 50 ms is normal on Ethernet or good Wi-Fi. If this is slow, the problem is inside your own network (Wi-Fi, router, cable), not the internet provider."
+  "Internet provider (first hop)"  "The first router beyond your own network, at your internet provider. Under 50 ms is normal. If your own router is fast but this is slow, the delay is on the provider's side or the link to it (a saturated uplink, a DSL/cable issue)."
+  "First public hop (via VPN)"     "The first router beyond the VPN tunnel. Under 50 ms is normal. If this is slow while your own router is fast, the delay is in the VPN path, not your local network."
+  "Download"                       "How fast data arrives, in Mbps. 50 Mbps or more handles video calls, streaming and downloads comfortably. Under 50 Mbps is enough for most work but large downloads take a while. Under 10 Mbps struggles with HD video and multiple devices."
+  "Upload"                         "How fast data leaves the Mac, in Mbps. Video calls and screen sharing depend on this. 10 Mbps or more is comfortable. Under 10 Mbps is enough for one call; under 3 Mbps calls look blurry and uploads crawl."
+  "Web request time (busy)"        "How long a web request took while the speed test had the connection busy. Under 50 ms means the connection copes with load. Above 120 ms means when someone downloads or backs up, everyone else's calls and clicks slow down (see Bufferbloat)."
+  "Bufferbloat"                    "How much the lag rises when the connection is busy. Grade A or B (a small rise) is fine. Grade C means calls may stutter during big uploads or downloads. Grade D or F means the router is queuing too much data; a router with 'Smart Queue' or 'SQM' fixes it, or pause big transfers during calls."
+  "Other apps using the network"   "What else on this Mac was using the network during the test. Anything over 5 Mbps (a backup, cloud sync, an update) competes with your calls and skews the results. Pause it and run the test again to see the network on its own."
+  "Responsive during test"         "The share of the test during which the internet was answering at all. 99% or better is normal. Below 99% the connection went unresponsive at times; below 95% it was dropping out often enough to notice in a call."
+  "Outages"                        "Moments when nothing on the internet answered for a stretch, not just one lost ping. Even one is worth a look: it's the kind of drop that freezes a call or logs you out. Common causes: weak Wi-Fi, a VPN reconnecting, or an unstable provider link."
+  "Drops in the last 24 hours"     "How many times macOS logged the network going down and back up in the last day while the Mac was awake (sleep/wake is skipped). One or two can be a Wi-Fi roam or a plugged cable. Three or more points to flaky Wi-Fi, a dock or adapter acting up, or a VPN reconnecting."
+  "Average time to first byte"     "The average wait from asking for a web page to the first byte of the answer arriving, across the test sites. Under 400 ms feels instant. Up to 1 second is noticeable. Over 1 second means every site feels slow, usually slow DNS, a slow proxy or VPN, or high latency."
+  "website"                        "How long this site took to start answering. First byte under 400 ms is good; up to 1 second is noticeable; over 1 second is slow. DNS is the name lookup, TLS done is when the secure connection was ready. 'Failed to load' means it never answered, which can be a block, a filter, or a DNS problem."
+  "Ethernet link"                  "The speed the Ethernet port negotiated. 1000 Mbps (gigabit) full-duplex is normal. 100 Mbps or 10 Mbps, or half-duplex, means a bad cable, a damaged port, or an old switch or dock, and will cap everything at that speed."
+  "IPv6"                           "The Mac has an IPv6 address but IPv6 doesn't reach the internet. Sites that prefer IPv6 can hang for a few seconds before falling back to IPv4. Usually the router or provider is misconfigured; turning IPv6 off on the Mac is a workaround."
+  "Proxy"                          "A proxy is configured, so web traffic goes through another server first. That's normal on managed networks, but a wrong or unreachable proxy makes every site fail or crawl, and it can explain slow first-byte times."
+  "MDM enrollment"                 "Whether this Mac is enrolled in device management. 'User Approved' is the fully working state. Enrolled but not user-approved means some management features are limited until the user approves the profile in System Settings."
+  "Management server"              "Whether the Mac can reach its device-management server right now. If it can't, policies, apps and settings from IT stop arriving. A firewall, VPN, or DNS problem is the usual cause."
+  "Jamf health check"              "Jamf's own health-check page. 'healthy' means the server answered normally. Anything else means the server is having trouble or is unreachable from here."
+  "Apple Push (port 5223)"         "Apple's push service, which is how management commands, notifications, FaceTime and iMessage reach the Mac. If port 5223 is blocked the Mac falls back to port 443, which works but is slower to be reached. Firewalls should allow 5223 to Apple."
+  "Apple Push (port 443 fallback)" "The backup path to Apple's push service. If both this and port 5223 are blocked, the Mac can't receive push notifications or management commands at all until the network allows it."
+  "Apple enrollment service"       "Apple's device enrollment service, used when a Mac enrolls or re-enrolls in management. Not needed day to day, but if it's blocked, setup and re-enrollment will fail on this network."
+  "Tunnel gateway (inside the VPN)" "How long it takes to reach the gateway on the inside of the VPN tunnel. Under 150 ms is normal. Higher means the VPN server is far away or overloaded, and everything through the VPN will feel slow."
+  "Connected VPN server"           "How far away the VPN server is, measured from outside the tunnel. Under 100 ms is normal. Higher means the VPN is adding a lot of lag; connecting to a closer server usually helps."
+  "Channel utilization (CCA)"      "How busy the Wi-Fi channel is, counting everyone on it. Above 50% the air is crowded, so the Mac waits for a turn to send. Switching the access point to a less crowded channel, or moving to 5 GHz, fixes it."
+  "Nearby access points (last scan)" "Other Wi-Fi networks on the same channel as you. Four or more strong ones means real interference: they all share the same air time. The access point should be moved to a quieter channel."
+  "Channel(s) during test"         "The Mac switched channels (roamed between access points) during the test. Each roam causes a short gap. Occasional roaming is normal; if it happens a lot, the Mac is between two access points with similar signal."
+  "target"                         "Ping results for this internet server. Average round trip under 50 ms is great, up to 120 ms is fine. Jitter under 10 ms is smooth. Loss should be 0%. Both servers are compared so that one server being slow or ignoring pings isn't mistaken for a network problem."
+  "router-hop"                     "How quickly your own router answers, measured on its own. Under 50 ms is normal (usually 1-5 ms). If this is slow, the problem is on your local network: Wi-Fi, the router itself, or a cable."
+  "hop"                            "One router along the path to the internet. Flagged when the time jumps more than 40 ms from the previous hop (more than 100 ms is red). A jump shows where the delay is added; a jump at the first hops is your network or provider, further along it's the wider internet."
+  "dns-server"                     "How long this DNS server takes to look up a name, averaged over a few lookups. Under 60 ms is fast; up to 150 ms is okay; slower than that makes every site take longer to start loading. 'No answer' means the server didn't respond at all. If your own DNS is much slower than the public ones, switching DNS servers helps."
+  "In-browser DNS (avg)"           "How long the name lookups took as part of loading the test websites, the way a browser experiences them. Under 60 ms is fast; up to 150 ms is okay; slower means every new site waits on DNS before it can even start."
+  "Captive portal"                 "A sign-in page (hotel, airport, guest Wi-Fi) is intercepting traffic. Nothing works until you open a browser and finish signing in to the network."
+  "Path MTU"                       "The largest packet that gets through to the internet in one piece. 1500 is normal. Smaller (common on VPNs, PPPoE and some hotspots) is usually fine, but a few apps and sites misbehave with small packets, and a VPN that doesn't match it can make big transfers stall."
+  "Clock offset vs time.apple.com" "How far the Mac's clock is from real time. Within 2 seconds is normal. More than that can break secure sites, VPN sign-in and two-factor codes; more than a minute usually will. Turn on automatic time in System Settings."
+  "Interface errors (during test)" "Packets the network card counted as damaged or dropped during the test. Should be zero. On Ethernet it points to a bad cable, port, or dock; on Wi-Fi to interference or a weak signal."
+  "TCP retransmits (during test)"  "The share of data the Mac had to send again because it didn't arrive. Under 2% is normal. Higher means data is being lost somewhere on the path, which slows everything down even when pings look fine."
+  "Low Power Mode"                 "Low Power Mode is on. macOS may slow the Wi-Fi radio and background networking to save battery, so results can look worse than the network really is."
+  "Mode"                           "These results are simulated for testing the tool. Nothing was actually measured."
+)
 finding() { print -r -- "$1"$'\t'"$(clean "$2")" >> "$FIND_FILE"; }
 
 device_serial() {
@@ -476,7 +544,9 @@ function setBig(m){ var txt="", parts=[];
 var TW={tpl:null,key:"",cur:[],tgt:[],shown:"",override:null};
 function splitNums(m){ var tpl=[], vals=[], cols=[];
  (m||"").split("|").forEach(function(sg){ var mm=sg.match(/-?\d+(\.\d+)?/);
-  if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#")); cols.push(sg.charAt(0)=="p"?PURPLE:CYAN); }
+  if(mm){ vals.push(parseFloat(mm[0])); tpl.push(sg.replace(mm[0],"#"));
+   var cc=(sg.length>1 && sg.charAt(1)==":")?sg.charAt(0):"";   // the graph line takes the number's color: green/orange/red for ping, cyan/purple for speed
+   cols.push(cc=="p"?PURPLE:(cc=="g"||cc=="o"||cc=="r"||cc=="y")?CODES[cc]:CYAN); }
   else { vals.push(null); tpl.push(sg); cols.push(null); } });
  return {tpl:tpl, vals:vals, cols:cols, key:tpl.map(function(t){return t.replace(/^[a-z]:/,"");}).join("|")}; }
 function renderTween(){ if(TW.override) return; var out=TW.tpl.map(function(t,i){ return TW.cur[i]==null ? t : t.replace("#",String(Math.round(TW.cur[i]))); }).join("|");
@@ -533,6 +603,7 @@ function showMetric(bigTxt,capTxt,a,b,live){
   if(LV.on && TW.tpl && !s.vals.some(function(v){return v!=null;})){                  // "no reply": show it, keep the graph going
     TW.override=bigTxt; setBig(bigTxt); return; }
   if(TW.tpl && LV.on && s.key==TW.key){ TW.tpl=s.tpl; TW.tgt=s.vals;                   // same kind of reading: glide to it
+    LV.cols=s.cols.filter(function(c){return c;});                                     // and recolor the line as the rating changes
     if(TW.override){ TW.override=null; TW.shown=""; } }
   else { TW.tpl=s.tpl; TW.key=s.key; TW.cur=s.vals.slice(); TW.tgt=s.vals.slice(); TW.shown=""; TW.override=null; renderTween();
          LV.hist=[]; LV.last=0; SC.init=false; LV.on=true; LV.cols=s.cols.filter(function(c){return c;});
@@ -678,7 +749,10 @@ ObjC.import('Cocoa');
 function rgb(a,al){return $.NSColor.colorWithSRGBRedGreenBlueAlpha(a[0]/255,a[1]/255,a[2]/255,al==null?1:al);}
 function hex(s){s=s.replace('#','');return [parseInt(s.substr(0,2),16),parseInt(s.substr(2,2),16),parseInt(s.substr(4,2),16)];}
 function bandHex(s){return s<0?'#8E8E93':s>=90?'#34C759':s>=80?'#7CC444':s>=70?'#F2B800':s>=50?'#FF9500':'#FF3B30';}
-var STAT={good:'#34C759',ok:'#FF9500',bad:'#FF3B30',na:'#8E8E93'};
+var DARK=(ObjC.unwrap($.NSUserDefaults.standardUserDefaults.stringForKey('AppleInterfaceStyle'))||"")=="Dark";
+var STAT=DARK?{good:'#34C759',ok:'#FFD60A',bad:'#FF453A',na:'#8E8E93'}     // green / yellow / red
+           :{good:'#1E9E48',ok:'#B8860B',bad:'#D70015',na:'#8E8E93'};    // darker shades so they read on a light window
+var SWORD={good:'Good',ok:'Warning',bad:'Problem'};
 var SYMS={good:'checkmark.circle.fill',ok:'exclamationmark.triangle.fill',bad:'xmark.octagon.fill',na:'info.circle.fill'};
 function readLines(p){try{var s=ObjC.unwrap($.NSString.stringWithContentsOfFileEncodingError(p,$.NSUTF8StringEncoding,null))||"";return s.split("\n").filter(function(l){return l.length;});}catch(e){return [];}}
 function label(s,x,y,w,h,sz,wt,al){var t=$.NSTextField.alloc.initWithFrame($.NSMakeRect(x,y,w,h));
@@ -701,7 +775,8 @@ var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);
 if(!$.NHRes){ObjC.registerSubclass({name:'NHRes',superclass:'NSObject',methods:{
  'done:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(1);}},
  'again:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(2);}},
- 'save:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(3);}}}});}
+ 'save:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(3);}},
+ 'why:':{types:['void',['id']],implementation:function(s){showWhy(s);}}}});}
 var hd=$.NHRes.alloc.init;
 
 var rows=readLines(DATA).map(function(l){return l.split("\t");});
@@ -759,15 +834,31 @@ if(findH){
  y-=14;
 }
 
-// Details (scrolls)
+// Details (scrolls). Each row is: the label on the left, the value in its own column (long values
+// wrap onto more lines instead of getting cut off), and a Good / Warning / Problem badge on the right.
+var dw=W-2*PAD, SECH=34, RH=26, HDH=46, docH=12;
 var dl=label("Details",PAD,y-22,300,18,13,$.NSFontWeightSemibold);cv.addSubview(dl);
+var dh=label("Click a badge to see why",PAD+300,y-22,dw-300,18,11,$.NSFontWeightRegular,2);dh.textColor=$.NSColor.tertiaryLabelColor;cv.addSubview(dh);
 y-=30;
-var dw=W-2*PAD, SECH=34, RH=24, docH=12;
-var HDH=46;
-rows.forEach(function(r){docH+=(r[0]=="S")?SECH:(r[0]=="H")?HDH:RH;});
+var LX=38, VX=246, LBW=VX-LX-10, BW=82, BX=dw-20-BW, VW=BX-VX-12;
+var FL=$.NSFont.systemFontOfSize(12), FV=$.NSFont.systemFontOfSizeWeight(12.5,$.NSFontWeightMedium);
+function th(s,w,f){var a=$.NSDictionary.dictionaryWithObjectForKey(f,$.NSFontAttributeName);   // how tall the text is once it wraps to fit
+ var r=$(s).boundingRectWithSizeOptionsAttributesContext($.NSMakeSize(w,400),3,a,$());return Math.ceil(r.size.height)+1;}
+function rowH(r){return r[0]=="S"?SECH:r[0]=="H"?HDH:Math.max(RH,Math.max(th(r[2]||"",VW,FV),th(r[1]||"",LBW,FL))+10);}
+rows.forEach(function(r){docH+=rowH(r);});
 docH=Math.max(docH,detH);
 var doc=$.NSView.alloc.initWithFrame($.NSMakeRect(0,0,dw-2,docH));
-var dy=docH-6, alt=0;
+var dy=docH-6, alt=0, WHY=[], POP=null;
+// The popover that opens when a badge is clicked: the row's name, its rating, and why it matters.
+function showWhy(btn){var e=WHY[btn.tag]; if(!e)return; if(POP){POP.close;POP=null;}
+ var pw=360, FB=$.NSFont.systemFontOfSize(12.5), bh=th(e[2],pw-32,FB), ph=bh+16+22+14;
+ var v=$.NSView.alloc.initWithFrame($.NSMakeRect(0,0,pw,ph));
+ var col=rgb(hex(STAT[{Good:'good',Warning:'ok',Problem:'bad'}[e[1]]]||STAT.na));
+ var t=label(e[0]+"  ·  "+e[1],16,ph-14-18,pw-32,18,13,$.NSFontWeightSemibold);t.textColor=col;v.addSubview(t);
+ var b=wrapLabel(e[2],16,12,pw-32,bh,12.5);b.font=FB;b.selectable=true;v.addSubview(b);
+ var vc=$.NSViewController.alloc.init;vc.view=v;
+ var po=$.NSPopover.alloc.init;po.contentViewController=vc;po.behavior=1;po.contentSize=$.NSMakeSize(pw,ph);
+ po.showRelativeToRectOfViewPreferredEdge(btn.bounds,btn,1);POP=po;}
 rows.forEach(function(r){
  if(r[0]=="H"){   // the line that splits the user stuff from the "For IT" stuff
   dy-=HDH; alt=0;
@@ -780,13 +871,24 @@ rows.forEach(function(r){
   doc.addSubview(label(r[1],38,dy+6,dw-60,20,13.5,$.NSFontWeightSemibold));
   doc.addSubview(rbox(12,dy+2,dw-28,1,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.25)));
  } else {
-  dy-=RH;
-  if(alt++%2) doc.addSubview(rbox(8,dy,dw-20,RH,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.06),5));
-  var lb=label(r[1],38,dy+4,250,16,12);lb.textColor=$.NSColor.secondaryLabelColor;doc.addSubview(lb);
-  var s=r[3]||"na";
-  var vl=label(r[2],290,dy+4,dw-290-44,16,12,$.NSFontWeightMedium,2);vl.selectable=true;vl.toolTip=r[2];
-  if(s=="bad"||s=="ok") vl.textColor=rgb(hex(STAT[s]));   // color problem values so they stand out
-  doc.addSubview(vl); if(s!="na"){doc.addSubview(rbox(dw-36,dy+8,8,8,rgb(hex(STAT[s]||STAT.na)),4));}
+  var h=rowH(r); dy-=h;
+  if(alt++%2) doc.addSubview(rbox(8,dy,dw-20,h,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.06),5));
+  var lh=th(r[1]||"",LBW,FL), lb=wrapLabel(r[1],LX,dy+h-5-lh,LBW,lh,12);lb.textColor=$.NSColor.secondaryLabelColor;doc.addSubview(lb);
+  var s=r[3]||"na", vh=th(r[2]||"",VW,FV);
+  var vl=wrapLabel(r[2],VX,dy+h-5-vh,VW,vh,12.5);vl.font=FV;vl.selectable=true;
+  if(s=="bad"||s=="ok") vl.textColor=rgb(hex(STAT[s]));   // problem values are colored too, so they stand out
+  doc.addSubview(vl);
+  if(s!="na"){   // the badge: green Good, yellow Warning, red Problem
+   var col=rgb(hex(STAT[s]||STAT.na)), by=dy+h-5-19, why=r[4]||"";
+   doc.addSubview(rbox(BX,by,BW,19,rgb(hex(STAT[s]||STAT.na),DARK?0.18:0.14),9.5));
+   var bi=sym(SYMS[s]||SYMS.na,BX+7,by+3,13,col); if(bi)doc.addSubview(bi);
+   var bt=label(SWORD[s]||"",BX+24,by+2,BW-28,15,10.5,$.NSFontWeightSemibold);bt.textColor=col;doc.addSubview(bt);
+   if(why){   // an invisible button over the badge: click for the explanation, hover for a tooltip
+    WHY.push([r[1],SWORD[s]||"",why]); vl.toolTip=why;
+    var wb=$.NSButton.alloc.initWithFrame($.NSMakeRect(BX,by,BW,19));wb.title="";wb.bordered=false;wb.transparent=true;
+    wb.tag=WHY.length-1;wb.target=hd;wb.action='why:';wb.toolTip=why;doc.addSubview(wb);
+   }
+  }
  }
 });
 var sv=$.NSScrollView.alloc.initWithFrame($.NSMakeRect(PAD,y-detH,dw,detH));
@@ -1466,6 +1568,32 @@ vpn_info() {
     # DNS domains sent to the VPN's DNS (from the resolver tied to the tunnel), if scutil didn't say
     [[ -z "$VPN_DOMAINS" ]] && VPN_DOMAINS=$(/usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk -v i="($tif)" '/^resolver/{d=""} /^  domain/{d=$3} /if_index/ && index($0,i) && d!="" {print d; d=""}' | /usr/bin/awk '!s[$0]++' | /usr/bin/head -5 | /usr/bin/paste -sd, - | /usr/bin/sed 's/,/, /g')
   fi
+  # GlobalProtect doesn't register its tunnel with macOS, but its own log names the gateway it connected
+  # to (the plain address only reverse-resolves to a cloud host name, which tells nobody anything).
+  if [[ -n "$VPN_TUNNELS" && -z "$VPN_HOST" && "$VPN_RUNNING" == *GlobalProtect* ]]; then
+    local gplog=/Library/Logs/PaloAltoNetworks/GlobalProtect/PanGPS.log gw=""
+    [[ -r "$gplog" ]] && gw=$(lim 5 /usr/bin/grep -a "save last connected gateway" "$gplog" 2>/dev/null | /usr/bin/tail -1 | /usr/bin/awk '{print $NF}')
+    if [[ "$gw" == *.* ]]; then
+      VPN_HOST="$gw"
+      [[ -z "$VPN_GW" ]] && VPN_GW=$(lim 4 /usr/bin/dig +short +time=2 +tries=1 "$gw" A 2>/dev/null | /usr/bin/grep -E '^[0-9.]+$' | /usr/bin/head -1)
+    fi
+  fi
+  # How the tunnel travels to the server: the live socket to it gives away the protocol and port
+  VPN_TRANSPORT=""
+  if [[ -n "$VPN_GW" ]]; then
+    local sock=$(lim 5 /usr/sbin/netstat -an -f inet 2>/dev/null | /usr/bin/awk -v s="$VPN_GW." 'index($5,s)==1 {print $1, substr($5,length(s)+1); exit}')
+    if [[ -n "$sock" ]]; then
+      local proto="${${sock%% *}%4}" port="${sock##* }"   # "udp4 4501" -> udp / 4501
+      case "$proto:$port" in
+        udp:4501)         VPN_TRANSPORT="IPsec over UDP 4501";;
+        udp:4500|udp:500) VPN_TRANSPORT="IPsec/IKE over UDP $port";;
+        udp:51820)        VPN_TRANSPORT="WireGuard over UDP 51820";;
+        udp:1194)         VPN_TRANSPORT="OpenVPN over UDP 1194";;
+        tcp:443)          VPN_TRANSPORT="TLS over TCP 443";;
+        *)                VPN_TRANSPORT="${proto:u} port $port";;
+      esac
+    fi
+  fi
   # The VPN server's name, if it has one
   if [[ -n "$VPN_GW" && -z "$VPN_HOST" ]]; then
     VPN_HOST=$(lim 3 /usr/bin/dig +short +time=1 +tries=1 -x "$VPN_GW" 2>/dev/null | /usr/bin/head -1 | /usr/bin/sed 's/\.$//')
@@ -1567,7 +1695,7 @@ simulate_run() {
   HIST_DROPS=0; HIST_LAST=""; HIST_LAST_DUR=""; HIST_LONGEST=0; APP_ROWS=(); APP_TOP=""; APP_TOP_MBPS=""
   MDM_ENROLLED="Yes (User Approved)"; MDM_ADE="Yes"; MDM_VENDOR="Jamf Pro"; MDM_URL=""; JAMF_URL="https://example.jamfcloud.com/"
   MDM_HOST="example.jamfcloud.com"; MDM_REACH=yes; MDM_MS=42; JAMF_HEALTH="healthy"; APNS_5223=35; APNS_443=30; APPLE_ENROLL=yes
-  VPN_APPS="GlobalProtect (running)"; VPN_RUNNING="GlobalProtect"; VPN_SERVERS="GlobalProtect portal vpn.example.com"; VPN_TUNNELS=""; VPN_MODE=""; VPN_GW=""; VPN_GW_MS=""; VPN_DNS=""
+  VPN_APPS="GlobalProtect (running)"; VPN_RUNNING="GlobalProtect"; VPN_SERVERS="GlobalProtect portal vpn.example.com"; VPN_TUNNELS=""; VPN_MODE=""; VPN_GW=""; VPN_GW_MS=""; VPN_DNS=""; VPN_TRANSPORT=""
   VPN_TYPE=""; VPN_TGW=""; VPN_TGW_MS=""; VPN_HOST=""; VPN_ROUTES=""; VPN_ROUTE_COUNT=0; VPN_DOMAINS=""
 
   # Then break whatever the scenario says to break -----------------------------------
@@ -1579,7 +1707,7 @@ simulate_run() {
   sim slow-dns    && { DNS_CFG_AVG=240; WEB_DNS=260; WEB_TTFB=520; }
   sim bufferbloat && { LOADED_MS=640; }
   sim slow-speed  && { DL_MBPS=6.2; UL_MBPS=0.9; LOADED_MS=310; }
-  sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40 (MTU 1400)"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"
+  sim vpn         && { VPN_TUNNELS="utun4 10.20.30.40 (MTU 1400)"; VPN_MODE="full tunnel (all traffic goes through the VPN)"; VPN_GW="203.0.113.77"; VPN_GW_MS=38; VPN_DNS="10.20.0.10, 10.20.0.11"; VPN_TRANSPORT="IPsec over UDP 4501"
                        VPN_TYPE="GlobalProtect (app tunnel)"; VPN_TGW="10.20.30.1"; VPN_TGW_MS=41; VPN_HOST="gp-east.vpn.example.com"; VPN_DOMAINS="corp.example.com"; }
   sim vpn         && { VPN_ACTIVE=1; VPN_NAME="Corporate VPN (simulated)"; PMTU=1400; INET_LAT=$(( INET_LAT + 30 )); INET_LAG=$(( INET_LAG + 30 )); VPN_CONFIGS="Corporate VPN (Connected)"; NE_LIST="Example VPN Extension"; }
   sim broken-ipv6 && [[ "$HIDE_IPV6" != true ]] && { IPV6_ADDR="2001:db8::50"; IPV6_NET="broken"; }
@@ -1657,7 +1785,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.2"
+SCRIPT_VERSION="1.3"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
@@ -1700,7 +1828,7 @@ write_json() {
     print -r -- "  \"history_24h\": {\"drops_while_awake\": $(jnum "$HIST_DROPS"), \"last_drop\": $(isnum "$HIST_LAST" && jstr "$(strftime '%Y-%m-%dT%H:%M:%S' $HIST_LAST)" || print -n null), \"longest_s\": $(jnum "$HIST_LONGEST")},"
     print -r -- "  \"top_app\": {\"name\": $(jstr "$APP_TOP"), \"mbps\": $(jnum "$APP_TOP_MBPS")},"
     print -r -- "  \"management\": {\"mdm\": $(jstr "$MDM_ENROLLED"), \"ade\": $(jstr "$MDM_ADE"), \"vendor\": $(jstr "$MDM_VENDOR"), \"server\": $(jstr "$MDM_HOST"), \"server_reachable\": $(jstr "$MDM_REACH"), \"apns_5223_ms\": $(jnum "$APNS_5223"), \"apns_443_ms\": $(jnum "$APNS_443")},"
-    print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_name\": $(jstr "$VPN_HOST"), \"server_ms\": $(jnum "$VPN_GW_MS"), \"type\": $(jstr "$VPN_TYPE"), \"tunnel_gateway\": $(jstr "$VPN_TGW"), \"tunnel_gateway_ms\": $(jnum "$VPN_TGW_MS"), \"split_routes\": $(jnum "$VPN_ROUTE_COUNT"), \"dns_domains\": $(jstr "$VPN_DOMAINS")},"
+    print -r -- "  \"vpn\": {\"apps\": $(jstr "$VPN_APPS"), \"tunnels\": $(jstr "$VPN_TUNNELS"), \"mode\": $(jstr "$VPN_MODE"), \"server\": $(jstr "$VPN_GW"), \"server_name\": $(jstr "$VPN_HOST"), \"server_ms\": $(jnum "$VPN_GW_MS"), \"transport\": $(jstr "$VPN_TRANSPORT"), \"type\": $(jstr "$VPN_TYPE"), \"tunnel_gateway\": $(jstr "$VPN_TGW"), \"tunnel_gateway_ms\": $(jnum "$VPN_TGW_MS"), \"split_routes\": $(jnum "$VPN_ROUTE_COUNT"), \"dns_domains\": $(jstr "$VPN_DOMAINS")},"
     print -r -- "  \"checks\": {\"captive_portal\": $(jstr "$CAPTIVE"), \"ipv6\": $([[ $HIDE_IPV6 == true ]] && jstr "hidden" || jstr "${IPV6_NET:-not configured}"), \"path_mtu\": $(jnum "$PMTU"), \"clock_offset_ms\": $(jnum "$CLOCK_OFF_MS"), \"proxy\": $(jstr "$PROXY_DESC")},"
     print -rn -- "  \"timings_s\": {"; first=1
     for t in $TIMINGS; do (( first )) || print -rn -- ", "; first=0; print -rn -- "$(jstr "${t% *}"): ${t#* }"; done
@@ -1965,7 +2093,7 @@ run_tests() {
   logDetail "DNS" "your DNS ${DNS_CFG_AVG:-?} ms vs public ${DNS_PUB_BEST:-?} ms · captive portal ${CAPTIVE:-?} · path MTU ${PMTU:-?} · clock off ${CLOCK_OFF_MS:-?} ms"
   logDetail "Management" "MDM: ${MDM_ENROLLED:-unknown}${MDM_VENDOR:+ · $MDM_VENDOR}${MDM_HOST:+ · server $([[ $MDM_REACH == yes ]] && print "reachable ($(ms $MDM_MS))" || print "NOT reachable") $MDM_HOST}$([[ -n $JAMF_HEALTH ]] && print " · Jamf health $JAMF_HEALTH") · Apple Push $(isnum "$APNS_5223" && print "ok" || { isnum "$APNS_443" && print "443 only" || print "BLOCKED"; })"
   if [[ -n "$VPN_TUNNELS" ]]; then
-    logDetail "VPN" "${VPN_TYPE:-${VPN_RUNNING:-unknown}} · ${VPN_TUNNELS} · ${VPN_MODE%% (*}${VPN_GW:+ · server $VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " ~$VPN_GW_MS ms")}${VPN_TGW:+ · tunnel gateway $VPN_TGW$(isnum "$VPN_TGW_MS" && print " $VPN_TGW_MS ms")}"
+    logDetail "VPN" "${VPN_TYPE:-${VPN_RUNNING:-unknown}} · ${VPN_TUNNELS} · ${VPN_MODE%% \(*}${VPN_GW:+ · server $VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " ~$VPN_GW_MS ms")}${VPN_TRANSPORT:+ · $VPN_TRANSPORT}${VPN_TGW:+ · tunnel gateway $VPN_TGW$(isnum "$VPN_TGW_MS" && print " $VPN_TGW_MS ms")}"
   elif [[ -n "$VPN_APPS" ]]; then
     logDetail "VPN" "no tunnel up · installed: $VPN_APPS"
   fi
@@ -2244,7 +2372,7 @@ run_tests() {
   if (( ${#web_rows} )); then
     section "Websites" "globe"
     isnum "$WEB_TTFB" && { s=good; (( WEB_TTFB > 400 )) && s=ok; (( WEB_TTFB > 1000 )) && s=bad; row "Average time to first byte" "$(ms $WEB_TTFB)" $s; }
-    for t in $web_rows; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}"; done
+    for t in $web_rows; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}" website; done
   fi
 
   # ---------------- For IT ----------------
@@ -2289,6 +2417,7 @@ run_tests() {
   row "Tunnel" "$([[ -n $VPN_TUNNELS ]] && print "Up · $VPN_TUNNELS · $VPN_MODE" || print "No VPN tunnel up")" na
   [[ -n "$VPN_TGW" ]] && row "Tunnel gateway (inside the VPN)" "$VPN_TGW$(isnum "$VPN_TGW_MS" && print " · $VPN_TGW_MS ms" || print " · doesn't answer")" "$(isnum "$VPN_TGW_MS" && { (( VPN_TGW_MS > 150 )) && print ok || print good; } || print na)"
   [[ -n "$VPN_GW" ]] && row "Connected VPN server" "$VPN_GW${VPN_HOST:+ ($VPN_HOST)}$(isnum "$VPN_GW_MS" && print " · about $VPN_GW_MS ms${VPN_GW_NOTE:+ ($VPN_GW_NOTE)}" || print " · ${VPN_GW_NOTE:-doesn't answer ping or traceroute}")" "$(isnum "$VPN_GW_MS" && { (( VPN_GW_MS > 100 )) && print ok || print good; } || print na)"
+  [[ -n "$VPN_TRANSPORT" ]] && row "Tunnel transport" "$VPN_TRANSPORT" na
   [[ -n "$VPN_SERVERS" ]] && row "Configured VPN servers" "$VPN_SERVERS" na
   [[ -n "$VPN_DNS" ]] && row "DNS from the VPN" "$VPN_DNS" na
   [[ -n "$VPN_DOMAINS" ]] && row "Domains sent to the VPN's DNS" "$VPN_DOMAINS" na
@@ -2305,8 +2434,8 @@ run_tests() {
   fi
 
   section "Responsiveness Detail" "waveform.path.ecg"
-  for t in $tgt_rows; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}"; done
-  (( ROUTER_OK )) && row "  Router $GATEWAY" "lag $(ms $R_LAG) · via $R_METHOD" "$(lag_status $R_LAG)"
+  for t in $tgt_rows; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}" target; done
+  (( ROUTER_OK )) && row "  Router $GATEWAY" "lag $(ms $R_LAG) · via $R_METHOD" "$(lag_status $R_LAG)" router-hop
   row "Method" "$INET_METHOD · ${TEST_SECONDS}s · every ${PING_INTERVAL}s" na
   if isnum "$LOADED_MS" || [[ -n "$SPEED_SERVER" ]]; then
     row "Speed server" "${SPEED_SERVER:-—}" na
@@ -2321,14 +2450,14 @@ run_tests() {
     for t in $hops; do local -a p=("${(@ps:\t:)t}")
       if [[ "${p[2]}" == "*" ]]; then row "  Hop ${p[1]}" "no reply (hop hides itself — normal)" na
       else jump=$(calc "${p[3]}-$prev"); s=na; (( jump > 40 )) && s=ok; (( jump > 100 )) && s=bad
-        row "  Hop ${p[1]}" "$(ms ${p[3]}) · ${p[2]}$(is_private_ip ${p[2]} && print " (private)")$( (( jump > 40 )) && print " · +$(r0 $jump) ms")$( (( ${p[4]} )) && print " · ${p[4]}/3 no reply")" "$s"
+        row "  Hop ${p[1]}" "$(ms ${p[3]}) · ${p[2]}$(is_private_ip ${p[2]} && print " (private)")$( (( jump > 40 )) && print " · +$(r0 $jump) ms")$( (( ${p[4]} )) && print " · ${p[4]}/3 no reply")" "$s" hop
         prev=${p[3]}; fi
     done
   fi
 
   if (( ${#DNS_ROWS} )); then
     section "DNS Servers (avg of ${#DNS_TEST_DOMAINS} lookups)" "server.rack"
-    for t in $DNS_ROWS; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}"; done
+    for t in $DNS_ROWS; do local -a p=("${(@ps:\t:)t}"); row "  ${p[1]}" "${p[2]}" "${p[3]}" dns-server; done
     isnum "$WEB_DNS" && row "  In-browser DNS (avg)" "$(ms $WEB_DNS)" "$( (( WEB_DNS > 150 )) && print bad || { (( WEB_DNS > 60 )) && print ok || print good; })"
   fi
 
@@ -2384,12 +2513,14 @@ build_report() {
         print -r -- "  [$tag] $t"
       done < "$FIND_FILE"
     done
-    while IFS=$'\t' read -r k a b c; do
+    while IFS=$'\t' read -r k a b c d; do
       if [[ "$k" == H ]]; then print -r -- ""; print -r -- ""; print -r -- "==================== ${a:u} ===================="
       elif [[ "$k" == S ]]; then print -r -- ""; print -r -- "${a:u}"
       else
+        local why=""; [[ "$c" == (ok|bad) && -n "$d" ]] && why="$d"
         case $c in good) c="";; ok) c="  (!)";; bad) c="  (X)";; *) c="";; esac
         printf "  %-32s %s%s\n" "$a" "$b" "$c"
+        [[ -n "$why" ]] && print -r -- "$why" | /usr/bin/fold -s -w 90 | /usr/bin/sed 's/^/        > /'   # why it matters, wrapped
       fi
     done < "$DATA_FILE"
     print -r -- ""
