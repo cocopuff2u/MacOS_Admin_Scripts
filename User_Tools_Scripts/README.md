@@ -4,6 +4,8 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 
 ## Available Scripts
 
+> **Collect User Logs** has moved to its own folder: [`/Collect_User_Logs`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs).
+
 ### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Recommend_User_Reboot.sh)
 
 - **Description**: Reminds the user to restart once their Mac has been up beyond a set number of days. Shows a branded reminder; if they agree, a **live countdown** gives them time to save work before the Mac restarts. Fully native — **no swiftDialog or JamfHelper**; the GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
@@ -69,29 +71,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
 
-### 4. [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Collect_User_Logs.sh)
-
-- **Description**: Gathers log files from the Mac (everything under `/var/log`, the system and user `Library/Logs` folders, and `/Library/Management`), zips them into a single archive, and drops it on the logged-in user's Desktop — ready to attach to a support ticket. Fully native — **no swiftDialog or JamfHelper**. Shows a progress spinner, a result window, and reveals the zip in Finder; the GUI runs in the console user's session via `osascript` (JXA) + AppKit, so it works even when run as root from Jamf.
-- **What it grabs**: all `*.log` files (plus rotated `*.log.*` and, optionally, crash/diagnostic reports), preserving each file's original path inside the zip. This includes **Jamf** (`jamf.log`, Self Service logs), **App Auto-Patch** (`aap.log`/`aap_verbose.log`), and **Installomator** (`Installomator.log`) logs. A `_DEVICE_INFO.txt` summary (user, computer name, serial, model, macOS, uptime) is added at the root.
-- **Zip name**: `Logs_<user>_<serial>_<timestamp>.zip`, owned by the user, on their Desktop.
-- **Two ways to deploy**:
-  - **Self Service** (user clicks it, watches progress): leave `HEADLESS=false`, set Jamf Parameter 4 to `verbose` (or blank — the default).
-  - **Headless** (collect silently, no UI): set Jamf Parameter 4 to `silent`, **or** set `HEADLESS=true` in the Config block.
-- **Jamf parameter labels** (script's *Options* tab):
-  - **Parameter 4**: `Action Mode (verbose or silent)`
-  - **Parameter 5**: `Extra Log Folders (comma-separated, optional)` — additional folders to include.
-- **Configurable variables** (top of the script): `HEADLESS`, `LOG_SOURCES`, `INCLUDE_ROTATED`, `INCLUDE_CRASH_REPORTS`, `MAX_FILE_MB`, `ZIP_NAME_PATTERN`, `logFile`, banner colours.
-- **No dependencies** — uses only built-in macOS tools (`find`, `ditto`, `osascript`).
-
-**Progress** (live — shows the folder being scanned and a running file count):
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_progress.png" width="50%">
-
-**Result window** (with the zip name ready to copy):
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_result.png" width="50%">
-
-### 5. [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Network_Health_Check.sh)
+### 4. [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Network_Health_Check.sh)
 
 - **Description**: Tests the Mac's network connection and shows the user a clear, plain-English results window: a **0–100 Network Score**, a **video-call verdict**, and findings that say what's wrong. It also gives IT the detailed data needed to troubleshoot. Fully native — **no swiftDialog or JamfHelper**. The GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
 - **What it measures**:

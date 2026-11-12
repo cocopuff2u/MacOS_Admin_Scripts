@@ -42,6 +42,9 @@ Scripts that provide tools and prompts for user and admin tasks.
 ### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
 A GUI tool that completely uninstalls an app and all its leftover files, with a user-reviewed checklist.
 
+### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
+Collects logs and system details into a branded zip on the user's Desktop, ready for a support ticket.
+
 ## Featured Scripts
 
 ### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
@@ -81,11 +84,10 @@ Finds expired certificates in the login and System keychains, backs them up, and
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_checklist.png" width="50%">
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
 
-### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
-Gathers log files from across the Mac (including Jamf, App Auto-Patch, and Installomator logs), zips them up, and drops the archive on the user's Desktop — ready to attach to a support ticket. Shows live progress and reveals the file in Finder.
+### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
+Gathers logs from across the Mac, including Jamf, App Auto-Patch, Installomator and sandboxed app logs, plus device, security and network details and install history. It zips them up and drops the archive on the user's Desktop, ready to attach to a support ticket. It supports your logo and colors (including your Jamf Self Service branding) in light and dark mode.
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_progress.png" width="50%">
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/collectuserlogs_result.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/result_dark.png" width="49%">
 
 </div>
 
