@@ -47,6 +47,10 @@
 #   Parameter 5 Label:  Speed Test (apple, cloudflare, or off)
 #   Parameter 6 Label:  Test Duration in seconds, or "quick" (blank = 20)
 #   Parameter 7 Label:  Simulate Scenario (testing only - leave blank)
+#   Parameter 8 Label:  Brand Icon (path, .app, URL, base64, sf:symbol, or selfservice — optional)
+#   Parameter 9 Label:  Banner Color (hex, auto, or auto-dark — optional)
+#   Parameter 10 Label: Brand Name (optional)
+#   Parameter 11 Label: Appearance (auto, light, or dark)
 #
 #   When you add this script to a policy, fill the parameters in like this:
 #     $4  Action Mode        verbose = show the progress + results windows (default)
@@ -59,6 +63,12 @@
 #     $7  Simulate Scenario  Leave this BLANK for real use. Put a scenario name in here (like
 #                            weak-wifi or no-internet) and it fakes the results so you can see
 #                            what a user would see. See SIMULATE below for the full list.
+#     $8  Brand Icon         your logo in the windows. Blank = BRAND_ICON below. Examples:
+#                              /Library/Application Support/Acme/logo.png   /Applications/Self Service.app
+#                              https://acme.com/logo.png   sf:building.2.fill   selfservice
+#     $9  Banner Color       hex like #1F2937, "auto" (match the logo) or "auto-dark". Blank = bannerColor.
+#     $10 Brand Name         small uppercase line above the title, e.g. "Acme IT Support".
+#     $11 Appearance         auto (follow the user's Light/Dark setting), light, or dark.
 # ---------------------------------------------------------------------------------------------
 #
 # TESTING (from Terminal, $1..$4 line up with Jamf's $4..$7):
@@ -108,6 +118,14 @@
 #               transport (e.g. IPsec over UDP 4501). A smaller MTU is rated Good on a VPN (it's how
 #               VPNs work). Test sites: wikipedia.org replaces www.microsoft.com, which failed too
 #               often. Tested live with GlobalProtect. - @cocopuff2u
+# 1.4 11/12/26 - Branding + look update (shared with Collect User Logs). Logo support (file, .app, URL,
+#               base64, SF Symbol, or your Jamf Self Service branding image), brand name, and colours
+#               taken automatically from the logo (Jamf $8-$10). Light and dark versions of every window,
+#               following the user's setting or forced with Jamf $11; the progress window is no longer
+#               always dark. New "ready for" verdicts beside video calls: voice calls, screen sharing,
+#               streaming, and big uploads. New Report Saved screen with a clickable file name that opens
+#               Finder; report names are easier to read (2026-11-12_10-40) and never overwrite.
+#               Moved to its own folder with its own README. - @cocopuff2u
 #
 ####################################################################################################
 
@@ -163,8 +181,10 @@ HIDE_IPV6=true          # true  = leave IPv6 out: no IPv6 check, and no IPv6 add
 
 # REPORT --------------------------------------------------------------------
 # "Save Report" puts a text file on the user's Desktop. These get swapped out in the name:
-#   {USER} = username   {SERIAL} = serial number   {STAMP} = date and time (YYYYMMDD-HHMMSS)
+#   {USER} = username   {SERIAL} = serial number   {STAMP} = date and time in STAMP_FORMAT
+#   e.g. NetworkHealth_jsmith_C02XK1ABJG5H_2026-11-12_10-40.txt
 REPORT_NAME_PATTERN="NetworkHealth_{USER}_{SERIAL}_{STAMP}.txt"
+STAMP_FORMAT="%Y-%m-%d_%H-%M"   # easy to read and still sorts by date. If the name exists, _2, _3… is added.
 logFile="/var/log/network_health_check.log"      # where this script logs what it did
 
 # TESTING -------------------------------------------------------------------
@@ -184,13 +204,42 @@ SAVE_JSON=false                            # true = also save the results as JSO
 JSON_DIR="/Library/Management/NetworkHealth"   #   last.json     = the most recent run
 JSON_HISTORY_MAX=500                       #   history.jsonl = one line per run, keeps the last 500
 
-# LOOK OF THE WINDOWS (verbose mode only) -----------------------------------
-bannerColor="#0056D2"                      # banner color (hex)
-BANNER_TEXT_COLOR="#FFFFFF"                # banner text color (hex)
+# BRANDING (verbose mode only) ----------------------------------------------
+BRAND_NAME=""              # optional small uppercase line above the window titles, e.g. "Acme IT Support".
+                           # Jamf Parameter 10 overrides this.
+BRAND_ICON=""              # optional logo, shown in the banner of every window. Any ONE of:
+                           #   • an image file  /Library/Application Support/Acme/logo.png  (png, jpg, heic, icns, pdf…)
+                           #   • an app/folder  /Applications/Self Service.app   (uses its Finder icon)
+                           #   • a URL          https://acme.com/logo.png         (downloaded each run)
+                           #   • base64         iVBORw0KGgoAAAANSUhEUgAA…       (data:image/png;base64,… ok)
+                           #                    make one with:  base64 -i logo.png | pbcopy
+                           #   • an SF Symbol   sf:building.2.fill                (tinted to match the theme)
+                           #   • Self Service   selfservice  (or: ss) — your Jamf Self Service branding logo
+                           #                    as cached on the Mac for the logged-in user; falls back to the
+                           #                    Self Service app's icon if they haven't opened Self Service yet.
+                           # Blank = no logo. Jamf Parameter 8 overrides this.
+
+# APPEARANCE ----------------------------------------------------------------
+APPEARANCE="auto"          # auto = follow the user's macOS Light/Dark setting   light / dark = force it
+                           # Jamf Parameter 11 overrides this.
+
+# COLOURS -------------------------------------------------------------------
+# Each takes a hex value (#RRGGBB or #RGB) or "auto". A bad hex value is treated as "auto".
+bannerColor="auto"         # banner + main button. Jamf Parameter 9 overrides this.
+                           #   auto      = the exact main colour of BRAND_ICON (drawn from the logo's own
+                           #               pixels so it matches 1:1); text switches to near-black if needed
+                           #   auto-dark = a deeper shade of the logo colour, dark enough for white text
+                           #   no logo   = #0056D2
+BANNER_TEXT_COLOR="auto"   # banner title / brand name / main button text. auto = white, or near-black on a
+                           # banner too light for white.
+ACCENT_COLOR="auto"        # active step, progress bar, section icons, chips. auto = the banner colour,
+                           # lightened (dark mode) or darkened (light mode) until it's readable.
+
+# TEXT ----------------------------------------------------------------------
 SPINNER_TEXT="Checking your network…"
-RESULT_TITLE="Network Health Check"
+RESULT_TITLE="Network Check Complete"
 SUPPORT_NOTE="Having trouble? Click Save Report and attach it to your IT ticket."
-SAVED_TITLE="Report Saved"
+SAVED_TITLE="Network Report Saved"
 okButton="Done"
 againButton="Run Again"
 saveButton="Save Report"
@@ -264,6 +313,11 @@ ACTION_MODE="${1:-verbose}"; ACTION_MODE="${ACTION_MODE:l}"
 [[ "${3:l}" == quick || -n "$NHC_QUICK" ]] && QUICK_MODE=true
 [[ -n "$4" ]] && SIMULATE="${4:l}"                         # Jamf $7
 [[ -n "$NHC_SIMULATE" ]] && SIMULATE="${NHC_SIMULATE:l}"
+[[ -n "$5" ]] && BRAND_ICON="$5"                           # Jamf $8
+[[ -n "$6" ]] && bannerColor="$6"                          # Jamf $9
+[[ -n "$7" ]] && BRAND_NAME="$7"                           # Jamf $10
+[[ -n "$8" ]] && APPEARANCE="$8"                           # Jamf $11
+APPEARANCE="${APPEARANCE:l}"; [[ "$APPEARANCE" == (light|dark) ]] || APPEARANCE="auto"
 if [[ "$QUICK_MODE" == true ]]; then TEST_SECONDS=5; SPEED_ENGINE="off"; fi
 [[ -n "$NHC_SHOW_IPV6" ]] && HIDE_IPV6=false
 
@@ -287,9 +341,6 @@ USER_HOME=$(/usr/bin/dscl . -read /Users/"$targetUser" NFSHomeDirectory 2>/dev/n
 # Nobody logged in? Then there's no one to show windows to, so run silently.
 [[ -z "$consoleUser" ]] && (( amRoot )) && ACTION_MODE="silent"
 
-# Turn the banner hex colors into the RGB numbers AppKit wants
-bhex="${bannerColor#\#}";   br=$((16#${bhex[1,2]}));  bg=$((16#${bhex[3,4]}));  bb=$((16#${bhex[5,6]}))
-tchex="${BANNER_TEXT_COLOR#\#}"; tr=$((16#${tchex[1,2]})); tg=$((16#${tchex[3,4]})); tb=$((16#${tchex[5,6]}))
 
 PING_COUNT=$(/usr/bin/awk -v s="$TEST_SECONDS" -v i="$PING_INTERVAL" 'BEGIN{printf "%d", s/i}')
 
@@ -345,7 +396,7 @@ if_bytes() { /usr/sbin/netstat -ibn -I "$PHYS_IF" 2>/dev/null | /usr/bin/awk 'NR
 # While the speed test is running, keep showing the live Mbps on the progress window.
 #   throughput_monitor <pid of the speed test> <both|down|up>
 throughput_monitor() {
-  local pid=$1 mode=$2 i0 o0 i1 o1 t0 t1 d u big; local -a sd su
+  local pid=$1 mode=$2 i0 o0 i1 o1 t0 t1 d u big cap phase=down upn=0; local -a sd su
   read -r i0 o0 <<< "$(if_bytes)"; t0=$EPOCHREALTIME
   while kill -0 $pid 2>/dev/null; do
     check_cancel
@@ -355,14 +406,22 @@ throughput_monitor() {
     d=$(calc "($i1-$i0)*8/($t1-$t0)/1000000"); u=$(calc "($o1-$o0)*8/($t1-$t0)/1000000")
     i0=$i1; o0=$o1; t0=$t1
     [[ "$ACTION_MODE" == verbose ]] || continue
-    case $mode in
-      down) sd+=($d); big="↓ $(r0 $d)" ;;
-      up)   su+=($u); big="↑ $(r0 $u)" ;;
-      *)    sd+=($d); su+=($u); big="↓ $(r0 $d)   ↑ $(r0 $u)" ;;
+    # Apple's test runs download first, then upload (-s). Switch to the upload half once upload
+    # traffic clearly takes over (2 readings in a row), and tell the progress window.
+    if [[ $mode == both && $phase == down ]]; then
+      if (( u > 1 && u > d )); then (( upn++ )); else upn=0; fi
+      if (( upn >= 2 )); then
+        phase=up
+        spin_status 3 "Testing upload speed" "Part 2 of 2 · uploading…" $(( (P_SPD[1]+P_SPD[2])/2 )) ${P_SPD[2]} $(( SPEED_MAX_SECONDS/2 + 2 ))
+      fi
+    fi
+    local cur=$mode; [[ $mode == both ]] && cur=$phase
+    case $cur in
+      down) sd+=($d); big="c:↓ $(r0 $d)"; cap="Mbps · downloading" ;;
+      up)   su+=($u); big="p:↑ $(r0 $u)"; cap="Mbps · uploading" ;;
     esac
     (( ${#sd} > 40 )) && sd=(${sd[-40,-1]}); (( ${#su} > 40 )) && su=(${su[-40,-1]})
-    case $mode in down) big="c:$big";; up) big="p:$big";; *) big="c:↓ $(r0 $d)|w:    |p:↑ $(r0 $u)";; esac
-    live_metric "$big" "Mbps right now" "${(j:,:)sd}" "${(j:,:)su}"
+    if [[ $cur == up ]]; then live_metric "$big" "$cap" "${(j:,:)su}" ""; else live_metric "$big" "$cap" "${(j:,:)sd}" ""; fi
   done
 }
 
@@ -379,6 +438,10 @@ row() {
 }
 typeset -gA WHY; WHY=(
   "Video calls"                    "A summary of how a video call would feel, from the lag, jitter, packet loss, bufferbloat and reliability measured. Ready = lag under 150 ms, jitter under 30 ms, no loss, and no drop-outs. Usable = lag under 250 ms, jitter under 50 ms, loss under 3%. Anything worse means freezing, robotic audio, or dropped calls."
+  "Voice calls"                    "How an audio-only call (phone, Teams/Zoom audio, VoIP) would sound, from the lag, jitter and packet loss measured. Ready = lag under 200 ms, jitter under 40 ms, loss under 2%, no drop-outs. Usable = lag under 300 ms, jitter under 60 ms, loss under 5%. Worse than that sounds robotic or cuts out."
+  "Screen sharing"                 "Screen sharing and remote desktop (Teams/Zoom share, Remote Desktop, VNC). These feel the lag on every click, and they send the screen out over the upload. Ready = lag under 80 ms, jitter under 20 ms, no loss, upload 3 Mbps or more. Usable = lag under 150 ms and loss under 3%."
+  "Streaming"                      "Video streaming by download speed: 25 Mbps or more is enough for 4K, 8 Mbps for HD, 3 Mbps for standard definition. Below that video buffers. If the connection dropped out during the test, streams may pause even when the speed is fine."
+  "Big uploads"                    "Backups, cloud sync and large file uploads, by upload speed: 20 Mbps or more is fast, 5-20 Mbps works but takes a while, under 5 Mbps crawls. With bufferbloat (grade D or F), a big upload also makes everyone's calls and browsing slow down until it finishes."
   "Signal strength (RSSI)"         "How strong the Wi-Fi signal is where the Mac sits, in dBm (closer to 0 is stronger). Good is -65 dBm or better. Below -65 dBm speeds start to drop; below -70 dBm expect slowdowns and drop-outs. Move closer to the access point, remove obstacles, or use Ethernet."
   "Signal during test"             "The weakest Wi-Fi signal seen while the test ran. A dip below -75 dBm, even briefly, is enough to stall a call or a download. Usually means the Mac is at the edge of coverage or something is interfering."
   "Signal-to-noise (SNR)"          "How far the Wi-Fi signal is above the background noise, in dB. 25 dB or more is clean. Below 25 dB the connection has to slow down to stay reliable; below 15 dB it becomes unstable. Noise comes from other networks, microwaves, and Bluetooth devices."
@@ -463,8 +526,256 @@ band_color() { local s=$1; (( s>=90 )) && { print "#34C759"; return }; (( s>=80 
                (( s>=70 )) && { print "#F2B800"; return }; (( s>=50 )) && { print "#FF9500"; return }; print "#FF3B30"; }
 score_status() { local s=$1; (( s>=80 )) && { print good; return }; (( s>=60 )) && { print ok; return }; print bad; }
 
+# ==================================================================================================
+# Branding + colour engine (shared with Collect User Logs): logo resolution, logo-derived colours,
+# light/dark palette, and the JS prelude every window uses.
+# ==================================================================================================
+# --- Colour helpers (pure zsh math; results come back in $REPLY) ------------
+# hex_norm <hex>    -> RRGGBB (uppercase), or "" if it isn't a valid #RRGGBB / #RGB
+hex_norm() {
+  local h="${1#\#}"
+  [[ "$h" == [[:xdigit:]](#c3) ]] && h="${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}"
+  [[ "$h" == [[:xdigit:]](#c6) ]] && REPLY="${h:u}" || REPLY=""
+}
+# lum <RRGGBB>      -> WCAG relative luminance 0..1
+lum() {
+  local i; local -F c L=0; local -a w=(0.2126 0.7152 0.0722)
+  for i in 1 2 3; do
+    c=$(( 16#${1[2*i-1,2*i]} / 255.0 ))
+    if (( c <= 0.04045 )); then c=$(( c / 12.92 )); else c=$(( ((c + 0.055) / 1.055) ** 2.4 )); fi
+    (( L += w[i] * c ))
+  done
+  REPLY=$L
+}
+# contrast <A> <B>  -> WCAG contrast ratio 1..21
+contrast() {
+  local -F a b t; lum $1; a=$REPLY; lum $2; b=$REPLY
+  (( a < b )) && { t=$a; a=$b; b=$t; }
+  REPLY=$(( (a + 0.05) / (b + 0.05) ))
+}
+# mix <A> <B> <t>   -> A blended toward B by t (0..1)
+mix() {
+  local i out=""; local -i x
+  for i in 1 2 3; do
+    x=$(( 16#${1[2*i-1,2*i]} * (1 - $3) + 16#${2[2*i-1,2*i]} * $3 + 0.5 ))
+    out+=${(l:2::0:)$(( [##16] x ))}
+  done
+  REPLY=$out
+}
+# readable <C> <BG> <min> -> C nudged toward white (dark BG) or black (light BG) until contrast >= min
+readable() {
+  local c=$1 toward; local -F t=0
+  lum $2; (( REPLY < 0.4 )) && toward=FFFFFF || toward=000000
+  while :; do
+    contrast $c $2; (( REPLY >= $3 || t >= 1 )) && break
+    t=$(( t + 0.05 )); mix $1 $toward $t; c=$REPLY
+  done
+  REPLY=$c
+}
+# rgbjs <RRGGBB>    -> "r,g,b" (0..1) for colorWithSRGBRedGreenBlueAlpha
+rgbjs() { print -r -- "$((16#${1[1,2]}))/255,$((16#${1[3,4]}))/255,$((16#${1[5,6]}))/255"; }
+
+# icon_color -> REPLY = the logo's main colour (most common saturated hue), or "" if it has none.
+# Draws the logo at 32x32 and buckets the pixels by hue; greys, near-black and transparent pixels
+# are ignored so a black/white logo on a coloured tile picks the tile colour.
+icon_color() {
+  REPLY=""
+  [[ -n "$BRAND_ICON_FILE" ]] || return 0
+  local js="$SCRATCH/iconcolor.jxa" out
+  { print -r -- "ObjC.import('Cocoa');"; brand_jxa; /bin/cat <<'EOF'
+(function(){ var img=brandImg(); if(!img) return "";
+ // Read the image's own pixels (no redraw, so colours aren't shifted) on a ~32x32 grid.
+ var rep=$.NSBitmapImageRep.imageRepWithData(img.TIFFRepresentation); if(!isOk(rep)) return "";
+ var PW=rep.pixelsWide, PH=rep.pixelsHigh, N=32, sx=Math.max(1,PW/N), sy=Math.max(1,PH/N);
+ var B=[], i; for(i=0;i<18;i++) B.push({w:0,r:0,g:0,b:0});
+ for(var yy=0;yy<N;yy++) for(var xx=0;xx<N;xx++){ var x=Math.floor(xx*sx), y=Math.floor(yy*sy); if(x>=PW||y>=PH) continue;
+  var c=rep.colorAtXY(x,y); if(!isOk(c)) continue; c=c.colorUsingColorSpace($.NSColorSpace.sRGBColorSpace); if(!isOk(c)) continue;
+  var r=c.redComponent, g=c.greenComponent, b=c.blueComponent, a=c.alphaComponent;
+  var mx=Math.max(r,g,b), mn=Math.min(r,g,b), v=mx, sat=mx? (mx-mn)/mx : 0;
+  if(a<0.6 || sat<0.3 || v<0.2) continue;
+  var h; if(mx==r) h=((g-b)/(mx-mn)+6)%6; else if(mx==g) h=(b-r)/(mx-mn)+2; else h=(r-g)/(mx-mn)+4;
+  var k=Math.floor(h*3)%18, wt=sat*v; B[k].w+=wt;
+  // Count exact colours inside the bucket so we return a real pixel of the logo, not a blend.
+  var key=Math.round(r*255)+","+Math.round(g*255)+","+Math.round(b*255);
+  var e=B[k][key]||(B[k][key]={n:0,x:x,y:y}); e.n++; }
+ var best=B[0]; for(i=1;i<18;i++) if(B[i].w>best.w) best=B[i];
+ if(best.w<1) return "";
+ var top=null, tk=""; for(var kk in best){ if(kk=="w"||kk=="r"||kk=="g"||kk=="b") continue; if(!top||best[kk].n>top.n){ top=best[kk]; tk=kk; } }
+ var p=tk.split(",").map(Number);
+ function hx(n){ return (n<16?"0":"")+n.toString(16); }
+ return hx(p[0])+hx(p[1])+hx(p[2])+" "+top.x+" "+top.y;   // "RRGGBB x y" (x,y = pixel in the image rep)
+})();
+EOF
+  } > "$js"
+  /bin/chmod 644 "$js"
+  out=$(run_as_user /usr/bin/osascript -l JavaScript "$js" 2>/dev/null)
+  ICON_PX="${out#* }"; [[ "$ICON_PX" == <->" "<-> ]] || ICON_PX=""
+  hex_norm "${out%% *}"
+}
+
+# build_palette — turns the colour settings into AppKit-ready values for light AND dark mode.
+# The windows pick one set at open time (APPEARANCE=auto follows the user's current setting).
+build_palette() {
+  local banner btxt accent card c
+  # Banner: explicit hex; else the logo's exact main colour ("auto"), or that colour deepened until
+  # white text reads well ("auto-dark"); else (no logo / no colour in it) the default blue.
+  # For "auto", BANNER_PX also tells the window which logo pixel to copy, so the banner is drawn
+  # from the logo's own colour space and matches it 1:1 on screen.
+  BANNER_PX=""
+  hex_norm "$bannerColor"; banner=$REPLY
+  if [[ -z "$banner" ]]; then
+    icon_color
+    if [[ -n "$REPLY" ]]; then
+      banner=$REPLY
+      if [[ "${bannerColor:l}" == auto-dark ]]; then readable "$banner" FFFFFF 4.5; banner=$REPLY
+      else BANNER_PX="$ICON_PX"; fi
+      logMe INFO "Banner colour from logo: #$banner"
+    else banner=0056D2; fi
+  fi
+  # Banner text: explicit, else white when it reads (>= 3:1, large bold text), else near-black.
+  hex_norm "$BANNER_TEXT_COLOR"; btxt=$REPLY
+  if [[ -z "$btxt" ]]; then contrast FFFFFF $banner; (( REPLY >= 3 )) && btxt=FFFFFF || btxt=1D1D1F; fi
+  PAL_BANNER=$(rgbjs $banner); PAL_BTXT=$(rgbjs $btxt)
+
+  local m
+  for m in L D; do
+    hex_norm "$SPINNER_BG_COLOR"; card=$REPLY
+    [[ -z "$card" ]] && { [[ $m == L ]] && card=F5F5F7 || card=1C1C1E; }
+    hex_norm "$ACCENT_COLOR"; accent=$REPLY
+    [[ -z "$accent" ]] && { readable $banner $card 4.5; accent=$REPLY; }
+    typeset -g PAL_CARD_$m=$(rgbjs $card) PAL_ACCENT_$m=$(rgbjs $accent)
+    # Card text follows the card's own lightness (so a custom card colour still reads).
+    lum $card
+    if (( REPLY < 0.4 )); then typeset -g PAL_TITLE_$m=$(rgbjs FFFFFF) PAL_SUB_$m=$(rgbjs D1D1D6)
+    else typeset -g PAL_TITLE_$m=$(rgbjs 1D1D1F) PAL_SUB_$m=$(rgbjs 3A3A3C); fi
+    hex_norm "$SUCCESS_COLOR"; c=$REPLY; [[ -z "$c" ]] && { [[ $m == L ]] && c=34C759 || c=30D158; }
+    typeset -g PAL_OK_$m=$(rgbjs $c)
+    hex_norm "$FAIL_COLOR";    c=$REPLY; [[ -z "$c" ]] && { [[ $m == L ]] && c=FF3B30 || c=FF453A; }
+    typeset -g PAL_FAIL_$m=$(rgbjs $c)
+  done
+}
+
+# palette_jxa — JS prelude for both windows: decides light/dark and defines the colour objects.
+palette_jxa() {
+  print -r -- "var MODE=\"$APPEARANCE\";"
+  /bin/cat <<'EOF'
+function PC(rgb,a){ return $.NSColor.colorWithSRGBRedGreenBlueAlpha(rgb[0],rgb[1],rgb[2],a==null?1:a); }
+var DARK = MODE=="dark" ? true : MODE=="light" ? false : (function(){
+ var n=$.NSApplication.sharedApplication.effectiveAppearance.bestMatchFromAppearancesWithNames($(["NSAppearanceNameAqua","NSAppearanceNameDarkAqua"]));
+ return ObjC.unwrap(n)=="NSAppearanceNameDarkAqua"; })();
+var APPEAR=$.NSAppearance.appearanceNamed(DARK?"NSAppearanceNameDarkAqua":"NSAppearanceNameAqua");
+EOF
+  print -r -- "var P_L={card:[$PAL_CARD_L],accent:[$PAL_ACCENT_L],title:[$PAL_TITLE_L],sub:[$PAL_SUB_L],ok:[$PAL_OK_L],fail:[$PAL_FAIL_L]};"
+  print -r -- "var P_D={card:[$PAL_CARD_D],accent:[$PAL_ACCENT_D],title:[$PAL_TITLE_D],sub:[$PAL_SUB_D],ok:[$PAL_OK_D],fail:[$PAL_FAIL_D]};"
+  print -r -- "var P=DARK?P_D:P_L, BANNER=PC([$PAL_BANNER]), BTXT=PC([$PAL_BTXT]);"
+  print -r -- "var CARD=PC(P.card), ACCENT=PC(P.accent), P_TITLE=PC(P.title), P_SUB=PC(P.sub), OKC=PC(P.ok), FAILC=PC(P.fail);   // P_ prefix: TITLE/SUB are this script's window text"
+}
+
+# --- Branding: resolve BRAND_ICON into something the windows can load ----------------------
+# Sets BRAND_ICON_FILE (an image file, or an .app/folder when BRAND_ICON_APP=true) or BRAND_ICON_SF
+# (an SF Symbol name). Files are copied/decoded into $SCRATCH and made world-readable so the window,
+# which runs in the user's session, can read them even when this script runs as root.
+BRAND_ICON_FILE=""; BRAND_ICON_SF=""; BRAND_ICON_APP=false
+# self_service_icon -> prints the best Self Service logo source for this Mac, or nothing:
+#   1. the org's branding image that Self Service caches for the logged-in user (set in Jamf Pro under
+#      Self Service > Branding) — this is the custom logo, not the app icon
+#   2. the Self Service app's own icon, using the app path Jamf has on record (handles renamed apps,
+#      e.g. "Acme Self Service.app"), then the standard Self Service / Self Service+ locations
+self_service_icon() {
+  local p
+  for p in \
+    "$USER_HOME/Library/Application Support/com.jamfsoftware.selfservice.mac/Documents/Images/brandingimage.png" \
+    "$USER_HOME/Library/Application Support/com.jamf.selfserviceplus/Documents/Images/brandingimage.png"; do
+    [[ -s "$p" ]] && { print -r -- "$p"; return 0; }
+  done
+  p=$(/usr/bin/defaults read /Library/Preferences/com.jamfsoftware.jamf self_service_app_path 2>/dev/null)
+  for p in "$p" "/Applications/Self Service.app" "/Applications/Self Service+.app"; do
+    [[ -n "$p" && -d "$p" ]] && { print -r -- "$p"; return 0; }
+  done
+}
+
+resolve_brand_icon() {
+  local src="$BRAND_ICON" out="$SCRATCH/brand_icon"
+  [[ -z "$src" ]] && return 0
+  if [[ "${src:l}" == (selfservice|self service|ss) ]]; then
+    src=$(self_service_icon)
+    if [[ -z "$src" ]]; then logMe WARN "BRAND_ICON=selfservice, but no Self Service branding image or app was found — continuing without a logo."; return 0; fi
+    logMe INFO "Brand icon from Self Service: $src"
+  fi
+  if [[ "$src" == sf:* ]]; then
+    BRAND_ICON_SF="${src#sf:}"; return 0
+  elif [[ "$src" == /* || "$src" == "~"* ]]; then
+    src="${src/#\~/$USER_HOME}"
+    if [[ -d "$src" ]]; then BRAND_ICON_FILE="$src"; BRAND_ICON_APP=true; return 0; fi
+    [[ -f "$src" ]] || { logMe WARN "Brand icon not found: $src"; return 0; }
+    /bin/cp "$src" "$out" 2>/dev/null
+  elif [[ "$src" == http(s|)://* ]]; then
+    /usr/bin/curl -fsSL --max-time 15 -o "$out" "$src" 2>/dev/null \
+      || { logMe WARN "Brand icon download failed: $src"; return 0; }
+  else
+    # base64 (optionally with a data: URI prefix). Strip the prefix and any whitespace/newlines.
+    src="${src#data:*;base64,}"; src="${src//[[:space:]]/}"
+    print -rn -- "$src" | /usr/bin/base64 -D > "$out" 2>/dev/null
+  fi
+  # Only keep it if macOS can actually read it as an image.
+  if [[ -s "$out" ]] && /usr/bin/sips -g pixelWidth "$out" 2>/dev/null | /usr/bin/grep -qE 'pixelWidth: [0-9]+'; then
+    /bin/chmod 644 "$out"; BRAND_ICON_FILE="$out"
+  else
+    logMe WARN "Brand icon is not a readable image — continuing without a logo."
+    /bin/rm -f "$out"
+  fi
+}
+
+# JXA snippet shared by both windows: brandImg() returns an NSImage for the logo, or null.
+brand_jxa() {
+  print -r -- "var BI_P=\"$(as_esc "$BRAND_ICON_FILE")\", BI_S=\"$(as_esc "$BRAND_ICON_SF")\", BI_APP=${BRAND_ICON_APP};"
+  /bin/cat <<'EOF'
+function isOk(o){ return !!o && !(typeof o.isNil==='function' && o.isNil()); }
+function brandImg(){
+ var i=null;
+ if(BI_S) i=$.NSImage.imageWithSystemSymbolNameAccessibilityDescription(BI_S,"");
+ else if(BI_P && BI_APP) i=$.NSWorkspace.sharedWorkspace.iconForFile(BI_P);
+ else if(BI_P) i=$.NSImage.alloc.initWithContentsOfFile(BI_P);
+ return isOk(i)?i:null; }
+EOF
+}
+
+# ui_common_jxa — JS shared by both windows (needs brand_jxa + palette_jxa + "var logo" first):
+#   brandFill(rect, pill) : a view in the banner colour (logo-pixel fill when bannerColor=auto)
+#   rounded(size, weight) : SF Pro Rounded font
+ui_common_jxa() {
+  print -r -- "var BANNER_PX=\"$BANNER_PX\";"
+  /bin/cat <<'EOF'
+// bannerColor=auto: paint the banner (and OK pill) with one pixel of the logo stretched to fill it.
+// It goes through the exact same image-drawing/colour-management path as the logo itself, so the two
+// match 1:1 on screen (a solid colour fill of the same hex is converted differently and can be off).
+var BPX=BANNER_PX.split(" ").map(Number), LOGOSRC=null;
+if(logo && BPX.length==2){ try{ var lr=$.NSBitmapImageRep.imageRepWithData(logo.TIFFRepresentation), PW=lr.pixelsWide, PH=lr.pixelsHigh, ls=logo.size;
+ LOGOSRC=$.NSMakeRect((BPX[0]+0.25)/PW*ls.width, ls.height-(BPX[1]+0.75)/PH*ls.height, 0.5/PW*ls.width, 0.5/PH*ls.height); }catch(e){ LOGOSRC=null; } }
+if(LOGOSRC && !$.LogoFill){ ObjC.registerSubclass({name:'LogoFill',superclass:'NSView',methods:{'drawRect:':{implementation:function(r){
+ var b=this.bounds; if(ObjC.unwrap(this.identifier)=="pill") $.NSBezierPath.bezierPathWithRoundedRectXRadiusYRadius(b,b.size.height/2,b.size.height/2).addClip;
+ logo.drawInRectFromRectOperationFraction(b,LOGOSRC,1,1); }}}}); }
+// brandFill(rect, pill) -> a view filled with the banner colour (logo-pixel fill when available)
+function brandFill(rect,pill){
+ if(LOGOSRC){ var v=$.LogoFill.alloc.initWithFrame(rect); if(pill) v.identifier="pill"; return v; }
+ var bx=$.NSBox.alloc.initWithFrame(rect); bx.boxType=4; bx.borderWidth=0; bx.titlePosition=0; bx.fillColor=BANNER;
+ if(pill) bx.cornerRadius=rect.size.height/2; return bx; }
+// bannerShade(W, H, BH) -> adds a soft shadow just under the banner so the header sits on the window
+// instead of ending in a hard edge (stronger in dark mode, barely there in light mode).
+function bannerShade(cv,W,H,BH){
+ if(!$.ShadeView){ ObjC.registerSubclass({name:'ShadeView',superclass:'NSView',methods:{'drawRect:':{implementation:function(r){
+  $.NSGradient.alloc.initWithStartingColorEndingColor(PC([0,0,0],DARK?0.32:0.07),PC([0,0,0],0)).drawInRectAngle(this.bounds,-90); }}}}); }
+ cv.addSubview($.ShadeView.alloc.initWithFrame($.NSMakeRect(0,H-BH-12,W,12))); }
+// Rounded system font (SF Pro Rounded), falling back to the regular system font.
+function rounded(sz,wt){ var f=$.NSFont.systemFontOfSizeWeight(sz,wt);
+ try{ var d=f.fontDescriptor.fontDescriptorWithDesign($.NSFontDescriptorSystemDesignRounded); var r=isOk(d)?$.NSFont.fontWithDescriptorSize(d,sz):null; if(isOk(r)) return r; }catch(e){}
+ return f; }
+EOF
+}
+
+
 # --- Progress window ------------------------------------------------------------------------------
-# The dark window users see while the test runs. It has the 5 step circles across the top, a big live
+# The window users see while the test runs (light or dark, branded banner on top). It has the 5 step circles, a big live
 # number with a graph (ping times, then Mbps), a progress bar that keeps moving smoothly, and a
 # Cancel button. It checks the status files about 5 times a second to see what's going on.
 SPIN_SCPT="$SCRATCH/spin.jxa"
@@ -474,11 +785,19 @@ show_spinner() {
     print -r -- "var STATUS=\"$(as_esc "$STATUS_FILE")\", LIVE=\"$(as_esc "$LIVE_FILE")\", FACTS=\"$(as_esc "$FACTS_FILE")\", TITLE=\"$(as_esc "$SPINNER_TEXT")\";"
     print -r -- "var SPEED_ON=$([[ "$SPEED_ENGINE" == off ]] && print false || print true);"
     print -r -- "var CANCEL=\"$(as_esc "$CANCEL_FILE")\", CANCEL_L=\"$(as_esc "$cancelButton")\";"
+    print -r -- "ObjC.import('Cocoa');"
+    brand_jxa; palette_jxa
+    print -r -- "var logo=brandImg(), BNAME=\"$(as_esc "$BRAND_NAME")\";"
+    ui_common_jxa
     /bin/cat <<'JXA'
 ObjC.import('Cocoa');
 function rd(p){try{return ObjC.unwrap($.NSString.stringWithContentsOfFileEncodingError(p,$.NSUTF8StringEncoding,null))||"";}catch(e){return "";}}
 function C(r,g,b,a){return $.NSColor.colorWithSRGBRedGreenBlueAlpha(r,g,b,a==null?1:a);}
-var BLUE=C(0.30,0.56,1), CYAN=C(0.35,0.82,1), PURPLE=C(0.72,0.48,1), GREEN=C(0.20,0.78,0.35), DIM=C(1,1,1,0.30), WHITE=C(0.95,0.96,0.98);
+// Colours for light and dark mode. BLUE is the brand accent (active step, progress bar).
+var BLUE=ACCENT, CYAN=DARK?C(0.35,0.82,1):C(0,0.52,0.76), PURPLE=DARK?C(0.72,0.48,1):C(0.50,0.28,0.86),
+    GREEN=DARK?C(0.20,0.78,0.35):C(0.10,0.58,0.24), DIM=DARK?C(1,1,1,0.55):C(0,0,0,0.56), WHITE=DARK?C(0.95,0.96,0.98):C(0.11,0.11,0.12),
+    MUTED=DARK?C(0.62,0.66,0.74):C(0.36,0.38,0.43), CAPC=DARK?C(0.70,0.74,0.82):C(0.33,0.35,0.40);
+function N(a){ return DARK?C(1,1,1,a):C(0,0,0,a*0.75); }   // neutral fills/tracks that read on either background
 function label(x,y,w,h,sz,wt,al){var t=$.NSTextField.alloc.initWithFrame($.NSMakeRect(x,y,w,h));
  t.bezeled=false;t.editable=false;t.selectable=false;t.drawsBackground=false;t.alignment=(al==null?1:al);
  t.usesSingleLineMode=true;t.cell.lineBreakMode=4;t.textColor=WHITE;t.font=$.NSFont.systemFontOfSizeWeight(sz,wt||$.NSFontWeightRegular);return t;}
@@ -486,49 +805,58 @@ function rbox(x,y,w,h,col,rad){var b=$.NSBox.alloc.initWithFrame($.NSMakeRect(x,
 function symImg(n){return $.NSImage.imageWithSystemSymbolNameAccessibilityDescription(n,"");}
 
 var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);
-var W=620,H=372;
-var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),0,2,false);
-win.opaque=false; win.backgroundColor=$.NSColor.clearColor; win.level=5; win.movableByWindowBackground=true;
-win.appearance=$.NSAppearance.appearanceNamed($.NSAppearanceNameDarkAqua);   // dark buttons to match the dark window
+var BH=(BNAME?78:66), W=620, H=310+BH, T=H-BH;   // T = top of the body, under the banner
+var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),(1<<0)|(1<<15),2,false);
+win.titlebarAppearsTransparent=true; win.titleVisibility=1; win.movableByWindowBackground=true; win.level=3;
+[0,1,2].forEach(function(i){ var bt=win.standardWindowButton(i); if(isOk(bt)) bt.hidden=true; });   // no traffic lights
+win.appearance=APPEAR;
 var cv=win.contentView; cv.wantsLayer=true;   // layer-backed = smooth, flicker-free animation
-var card=rbox(10,10,W-20,H-20,C(0.13,0.13,0.15,0.97),22);
-card.shadow=$.NSShadow.alloc.init; card.shadow.shadowBlurRadius=24; card.shadow.shadowOffset=$.NSMakeSize(0,-4); card.shadow.shadowColor=C(0,0,0,0.45);
-cv.addSubview(card);
 
-var title=label(30,H-62,W-60,26,18,$.NSFontWeightBold); title.stringValue=TITLE; cv.addSubview(title);
+// Banner: brand colour (or the logo's own pixels), logo, brand name, title, and the Cancel button
+cv.addSubview(brandFill($.NSMakeRect(0,T,W,BH),false)); bannerShade(cv,W,H,BH);
+var LS=(BNAME?50:44), tx=124;
+if(logo){ var lv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(16,T+(BH-LS)/2,LS,LS)); lv.setImage(logo); lv.imageScaling=3; if(BI_S) lv.contentTintColor=BTXT; cv.addSubview(lv); }
+var TH=30, tY = BNAME ? (T+12) : (T+(BH-TH)/2);
+var title=label(tx,tY,W-2*tx,TH,22,$.NSFontWeightBold); title.stringValue=TITLE; title.font=rounded(22,$.NSFontWeightBold); title.textColor=BTXT; cv.addSubview(title);
+if(BNAME){ var bn=label(tx,tY+TH+1,W-2*tx,16,11,$.NSFontWeightSemibold); bn.stringValue=BNAME.toUpperCase(); bn.font=rounded(11,$.NSFontWeightSemibold); bn.textColor=BTXT; bn.alphaValue=0.72; cv.addSubview(bn); }
 
-// Cancel button (top right). It writes the cancel file, and the script sees that, stops, and closes this window.
+// Cancel button (in the banner, right). It writes the cancel file, and the script sees that, stops, and closes this window.
 if(!$.NHCancel){ObjC.registerSubclass({name:'NHCancel',superclass:'NSObject',methods:{
  'cancel:':{types:['void',['id']],implementation:function(b){
    $("1").writeToFileAtomicallyEncodingError(CANCEL,false,$.NSUTF8StringEncoding,null);
-   b.enabled=false; b.title="Cancelling…"; }}}});}
+   b.enabled=false; cancelLbl.stringValue="Cancelling…"; cancelPill.alphaValue=0.6; cancelLbl.alphaValue=0.7; }}}});}
 var ch=$.NHCancel.alloc.init;
-var cb=$.NSButton.alloc.initWithFrame($.NSMakeRect(W-124,H-60,96,26)); cb.title=CANCEL_L; cb.bezelStyle=1; cb.controlSize=1;
-cb.target=ch; cb.action='cancel:'; cv.addSubview(cb);
+// A pill in the banner's text colour (translucent fill + edge), so it stands out on any brand colour.
+var CBW=104, CBH=28, cbx=W-CBW-16, cby=T+(BH-CBH)/2;
+var cancelPill=$.NSBox.alloc.initWithFrame($.NSMakeRect(cbx,cby,CBW,CBH)); cancelPill.boxType=4; cancelPill.titlePosition=0; cancelPill.cornerRadius=CBH/2;
+cancelPill.fillColor=BTXT.colorWithAlphaComponent(0.20); cancelPill.borderWidth=1; cancelPill.borderColor=BTXT.colorWithAlphaComponent(0.45); cv.addSubview(cancelPill);
+var cancelLbl=label(cbx,cby+(CBH-17)/2,CBW,17,12.5,$.NSFontWeightSemibold,1); cancelLbl.stringValue=CANCEL_L; cancelLbl.textColor=BTXT; cv.addSubview(cancelLbl);
+var cb=$.NSButton.alloc.initWithFrame($.NSMakeRect(cbx,cby,CBW,CBH)); cb.title=""; cb.bordered=false; cb.transparent=true;
+cb.target=ch; cb.action='cancel:'; cb.keyEquivalent=$("\u001b"); cv.addSubview(cb);   // Esc also cancels
 
 // The 5 step circles
 var STEPS=[["network","Connect"],["gauge.with.dots.needle.67percent","Responsiveness"],["globe","Web & DNS"],["speedometer","Speed"],["checkmark.seal","Score"]];
-var nodeY=H-134, x0=92, gap=(W-2*x0)/4, nodes=[], links=[];
+var nodeY=T-72, x0=92, gap=(W-2*x0)/4, nodes=[], links=[];
 for(var i=0;i<4;i++){ var lx=x0+i*gap+22, lw=gap-44;
- cv.addSubview(rbox(lx,nodeY+15,lw,3,C(1,1,1,0.12),1.5));
+ cv.addSubview(rbox(lx,nodeY+15,lw,3,N(0.12),1.5));
  var lf=rbox(lx,nodeY+15,0,3,GREEN,1.5); cv.addSubview(lf); links.push({box:lf,x:lx,w:lw,cur:0}); }
 for(var i=0;i<STEPS.length;i++){ var cx=x0+i*gap;
- var bgc=rbox(cx-17,nodeY,34,34,C(1,1,1,0.07),17); cv.addSubview(bgc);
+ var bgc=rbox(cx-17,nodeY,34,34,N(0.07),17); cv.addSubview(bgc);
  var iv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(cx-10,nodeY+7,20,20)); iv.setImage(symImg(STEPS[i][0])); iv.imageScaling=3; iv.contentTintColor=DIM; cv.addSubview(iv);
  var nl=label(cx-60,nodeY-22,120,16,10.5,$.NSFontWeightMedium); nl.stringValue=STEPS[i][1]; nl.textColor=DIM; cv.addSubview(nl);
  nodes.push({bg:bgc,icon:iv,lab:nl,sym:STEPS[i][0],state:-1}); }
 
 // What step we're on
-var stepT=label(30,H-196,W-60,22,15,$.NSFontWeightSemibold); cv.addSubview(stepT);
-var detail=label(30,H-218,W-60,18,12); detail.textColor=C(0.62,0.66,0.74); cv.addSubview(detail);
+var stepT=label(30,T-134,W-60,22,15,$.NSFontWeightSemibold); cv.addSubview(stepT);
+var detail=label(30,T-156,W-60,18,12); detail.textColor=MUTED; cv.addSubview(detail);
 
 // The live number box: a faint graph across the back, with the colored number on top
-cv.addSubview(rbox(30,72,W-60,78,C(1,1,1,0.05),12));
+cv.addSubview(rbox(30,72,W-60,78,N(0.05),12));
 var SPW=W-76, SPH=66;
 var spark=$.NSImageView.alloc.initWithFrame($.NSMakeRect(38,78,SPW,SPH)); spark.imageScaling=0; spark.alphaValue=0.45; cv.addSubview(spark);
 var big=label(40,102,W-80,40,30,$.NSFontWeightBold,1); cv.addSubview(big);
-var cap=label(40,82,W-80,16,11.5,$.NSFontWeightMedium,1); cap.textColor=C(0.70,0.74,0.82); cv.addSubview(cap);
-var CODES={w:WHITE,c:CYAN,p:PURPLE,g:GREEN,o:C(1,0.62,0.22),r:C(1,0.38,0.35),b:BLUE,y:C(1,0.84,0.26)};
+var cap=label(40,82,W-80,16,11.5,$.NSFontWeightMedium,1); cap.textColor=CAPC; cv.addSubview(cap);
+var CODES={w:WHITE,c:CYAN,p:PURPLE,g:GREEN,o:DARK?C(1,0.62,0.22):C(0.72,0.34,0),r:DARK?C(1,0.38,0.35):C(0.84,0.13,0.10),b:BLUE,y:DARK?C(1,0.84,0.26):C(0.54,0.40,0)};
 var BIGF=$.NSFont.monospacedDigitSystemFontOfSizeWeight(30,$.NSFontWeightBold);
 var PS=$.NSMutableParagraphStyle.alloc.init; PS.alignment=1; PS.lineBreakMode=4;
 function setBig(m){ var txt="", parts=[];
@@ -613,10 +941,10 @@ function showMetric(bigTxt,capTxt,a,b,live){
  } else { TW.tpl=null; TW.override=null; LV.on=false; setBig(bigTxt); spark.setImage(drawStatic(nums(a),nums(b))); }
 }
 // Progress bar (slides smoothly, with a little shine moving across it)
-var BX=44, BY=44, BW=W-88-52, BH=10;
-cv.addSubview(rbox(BX,BY,BW,BH,C(1,1,1,0.10),5));
-var fill=rbox(BX,BY,0,BH,BLUE,5); try{fill.clipsToBounds=true;}catch(e){} cv.addSubview(fill);
-var shim=rbox(-80,0,80,BH,C(1,1,1,0.28),5); fill.addSubview(shim);
+var BX=44, BY=44, BW=W-88-52, BHt=10;
+cv.addSubview(rbox(BX,BY,BW,BHt,N(0.10),5));
+var fill=rbox(BX,BY,0,BHt,BLUE,5); try{fill.clipsToBounds=true;}catch(e){} cv.addSubview(fill);
+var shim=rbox(-80,0,80,BHt,C(1,1,1,0.28),5); fill.addSubview(shim);
 var pct=label(W-44-48,BY-4,48,18,12.5,$.NSFontWeightSemibold,2); pct.font=$.NSFont.monospacedDigitSystemFontOfSizeWeight(12.5,$.NSFontWeightSemibold); cv.addSubview(pct);
 
 function nums(s){return (s||"").split(",").filter(function(x){return x.length;}).map(parseFloat).filter(function(x){return !isNaN(x);});}
@@ -626,9 +954,9 @@ function setSteps(k){
   if(i==3 && !SPEED_ON) st=3;
   if(n.state==st) continue; n.state=st;
   if(st==0){ n.icon.setImage(symImg("checkmark.circle.fill")); n.icon.contentTintColor=GREEN; n.bg.fillColor=C(0.20,0.78,0.35,0.16); n.lab.textColor=WHITE; n.icon.alphaValue=1; }
-  else if(st==1){ n.icon.setImage(symImg(n.sym)); n.icon.contentTintColor=BLUE; n.bg.fillColor=C(0.30,0.56,1,0.22); n.lab.textColor=WHITE; }
-  else if(st==3){ n.icon.setImage(symImg("minus.circle")); n.icon.contentTintColor=DIM; n.bg.fillColor=C(1,1,1,0.05); n.lab.stringValue="Skipped"; n.lab.textColor=DIM; }
-  else { n.icon.setImage(symImg(n.sym)); n.icon.contentTintColor=DIM; n.bg.fillColor=C(1,1,1,0.07); n.lab.textColor=DIM; n.icon.alphaValue=1; }
+  else if(st==1){ n.icon.setImage(symImg(n.sym)); n.icon.contentTintColor=BLUE; n.bg.fillColor=ACCENT.colorWithAlphaComponent(0.22); n.lab.textColor=WHITE; }
+  else if(st==3){ n.icon.setImage(symImg("minus.circle")); n.icon.contentTintColor=DIM; n.bg.fillColor=N(0.05); n.lab.stringValue="Skipped"; n.lab.textColor=DIM; }
+  else { n.icon.setImage(symImg(n.sym)); n.icon.contentTintColor=DIM; n.bg.fillColor=N(0.07); n.lab.textColor=DIM; n.icon.alphaValue=1; }
  }
  for(var i=0;i<links.length;i++) links[i].goal=(i<k)?1:0;
 }
@@ -662,15 +990,15 @@ if(!$.NHTick){ObjC.registerSubclass({name:'NHTick',superclass:'NSObject',methods
   tweenStep(dt); if(LV.on){ liveSample(tnow); spark.setImage(drawLive(tnow,dt)); }   // smooth live number + scrolling graph
   var tg=target(); if(cur.to>=100 && cur.eta<=0.5) tg=100;
   if(tg>shown) shown+=(tg-shown)*(1-Math.exp(-dt/0.3));
-  var fw=Math.round(Math.max(BH,BW*shown/100));
-  if(fw!=lastFW){ fill.setFrame($.NSMakeRect(BX,BY,fw,BH)); lastFW=fw; }
+  var fw=Math.round(Math.max(BHt,BW*shown/100));
+  if(fw!=lastFW){ fill.setFrame($.NSMakeRect(BX,BY,fw,BHt)); lastFW=fw; }
   // the shine sweeps across every 1.6s and fades in/out at the ends instead of popping back to the start
   var ph=(tnow%1.6)/1.6, sx=Math.round(-80+ph*(fw+80));
-  shim.setFrame($.NSMakeRect(sx,0,80,BH)); shim.alphaValue=Math.sin(ph*Math.PI);
+  shim.setFrame($.NSMakeRect(sx,0,80,BHt)); shim.alphaValue=Math.sin(ph*Math.PI);
   var pt=Math.floor(shown+0.5)+"%"; if(pt!=lastPct){ pct.setStringValue(pt); lastPct=pt; }
   if(shown>=99.5 && !barDone){ fill.fillColor=GREEN; barDone=true; }
   var n=nodes[cur.step]; if(n && n.state==1) n.icon.alphaValue=0.55+0.45*Math.sin(tnow*6);
-  for(var i=0;i<links.length;i++){ var lk=links[i]; lk.cur+=((lk.goal||0)-lk.cur)*(1-Math.exp(-dt/0.18)); lk.box.setFrame($.NSMakeRect(lk.x,nodeY+15,lk.w*lk.cur,3)); }
+  for(var i=0;i<links.length;i++){ var lk=links[i]; lk.cur+=((lk.goal||0)-lk.cur)*(1-Math.exp(-dt/0.18)); lk.box.setFrame($.NSMakeRect(lk.x,nodeY+15,lk.w*lk.cur,3)); lk.box.hidden=(lk.w*lk.cur<1); }   // hidden at ~0 width so no green stub shows
  }}}});}
 var tk=$.NHTick.alloc.init;
 // 60 frames a second, and keep ticking while the window is being dragged (common run loop modes)
@@ -685,48 +1013,114 @@ JXA
 }
 kill_spinner() { /usr/bin/pkill -f "$SPIN_SCPT" 2>/dev/null; return 0; }
 
-# --- Simple message window (shown after Save Report) --------------------------
-# show_message <title> <SF Symbol name> <icon color hex> <message> [file name]
+# --- Report Saved window (same end screen as Collect User Logs) ------------------
+# show_message <title> <sfSymbol> <ok|fail> <message> [filename] [full path]
+#   Branded banner (brand name + rounded title), a glowing status icon, a wrapping message, an
+#   optional filename chip that reveals the file in Finder when clicked, and a branded OK button.
+#   Window height auto-fits the content.
 show_message() {
   [[ "$ACTION_MODE" == "verbose" ]] || return 0
-  local th="${3#\#}"; local ir=$((16#${th[1,2]})) ig=$((16#${th[3,4]})) ib=$((16#${th[5,6]}))
-  local mscpt="$SCRATCH/message.jxa"
-  {
-    print -r -- "var T=\"$(as_esc "$1")\", SYM=\"$2\", MSG=\"$(as_esc "$4")\", FNAME=\"$(as_esc "$5")\", OKL=\"$(as_esc "$okButton")\";"
-    print -r -- "var BC=[$br,$bg,$bb], TC=[$tr,$tg,$tb], IC=[$ir,$ig,$ib];"
-    /bin/cat <<'JXA'
+  local t="${1//\"/\\\"}" sym="$2" m="${4//\"/\\\"}" fname="${5//\"/\\\"}" fpath="$(as_esc "$6")" mscpt="$SCRATCH/result.jxa"
+  local tint="OKC"; [[ "$3" == fail ]] && tint="FAILC"
+  /bin/cat > "$mscpt" <<EOF
 ObjC.import('Cocoa');
-function rgb(a){return $.NSColor.colorWithSRGBRedGreenBlueAlpha(a[0]/255,a[1]/255,a[2]/255,1);}
-if(!$.NHMsg){ObjC.registerSubclass({name:'NHMsg',superclass:'NSObject',methods:{'ok:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(1);}}}});}
-function label(s,x,y,w,ht,sz,bold,al){var t=$.NSTextField.alloc.initWithFrame($.NSMakeRect(x,y,w,ht));
+$(brand_jxa)
+$(palette_jxa)
+var logo=brandImg(), BNAME="$(as_esc "$BRAND_NAME")";
+$(ui_common_jxa)
+var FPATH="$fpath";
+ObjC.registerSubclass({name:'CLMSG',superclass:'NSObject',methods:{
+ 'ok:':{types:['void',['id']],implementation:function(s){\$.NSApplication.sharedApplication.stopModalWithCode(1);}},
+ 'reveal:':{types:['void',['id']],implementation:function(s){   // open Finder with the zip selected
+   if(FPATH) \$.NSWorkspace.sharedWorkspace.activateFileViewerSelectingURLs(\$([\$.NSURL.fileURLWithPath(FPATH)])); }}}});
+// A borderless button that shows the pointing-hand cursor, so the filename chip reads as clickable.
+ObjC.registerSubclass({name:'LinkBtn',superclass:'NSButton',methods:{'resetCursorRects':{implementation:function(){
+ this.addCursorRectCursor(this.bounds,\$.NSCursor.pointingHandCursor); }}}});
+function label(s,x,y,w,ht,sz,bold,al){var t=\$.NSTextField.alloc.initWithFrame(\$.NSMakeRect(x,y,w,ht));
  t.stringValue=s;t.bezeled=false;t.editable=false;t.selectable=true;t.drawsBackground=false;t.alignment=al;t.usesSingleLineMode=false;t.cell.wraps=true;
- t.textColor=$.NSColor.labelColor;t.font=bold?$.NSFont.boldSystemFontOfSize(sz):$.NSFont.systemFontOfSize(sz);return t;}
-var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);
-var h=$.NHMsg.alloc.init; var hasFile=FNAME.length>0;
-var W=560, BH=66, okH=32, iconS=56, msgH=52, chipH=34, g=14, topPad=18, botPad=24;
-var okY=botPad, chipY=hasFile?(okY+okH+g):okY+okH, msgY=hasFile?(chipY+chipH+g):(okY+okH+g), iconY=msgY+msgH+g, H=iconY+iconS+topPad+BH;
-var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),(1<<0)|(1<<15),2,false);
+ t.textColor=\$.NSColor.labelColor;t.font=bold?\$.NSFont.boldSystemFontOfSize(sz):\$.NSFont.systemFontOfSize(sz);return t;}
+var app=\$.NSApplication.sharedApplication; app.setActivationPolicy(1);
+var h=\$.CLMSG.alloc.init;
+var FNAME="$fname"; var hasFile=FNAME.length>0;
+var W=560, BH=(BNAME?78:66), okH=32, iconS=52, haloS=84, msgH=52, chipH=34, g=14, topPad=16, botPad=24;
+// Lay out bottom-up so the window height auto-fits.
+var okY=botPad;
+var chipY = hasFile ? (okY+okH+g) : okY+okH;
+var msgY  = (hasFile ? (chipY+chipH+g) : (okY+okH+g));
+var iconY = msgY+msgH+g;
+var H = iconY+haloS+topPad+BH;
+var win=\$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer(\$.NSMakeRect(0,0,W,H),(1<<0)|(1<<15),2,false);
 win.titlebarAppearsTransparent=true; win.titleVisibility=1; win.movableByWindowBackground=true;
+win.appearance=APPEAR;
 var cv=win.contentView;
-var banner=$.NSBox.alloc.initWithFrame($.NSMakeRect(0,H-BH,W,BH)); banner.boxType=4; banner.borderWidth=0; banner.titlePosition=0;
-banner.fillColor=rgb(BC); cv.addSubview(banner);
-var tl=label(T,20,H-BH+(BH-26)/2,W-40,26,18,true,1); tl.textColor=rgb(TC); cv.addSubview(tl);
-var img=$.NSImage.imageWithSystemSymbolNameAccessibilityDescription(SYM,"");
-if(img){ var iv=$.NSImageView.alloc.initWithFrame($.NSMakeRect((W-iconS)/2,iconY,iconS,iconS)); iv.setImage(img); iv.imageScaling=3; iv.contentTintColor=rgb(IC); cv.addSubview(iv); }
-cv.addSubview(label(MSG,36,msgY,W-72,msgH,13,false,1));
+var banner=brandFill(\$.NSMakeRect(0,H-BH,W,BH),false);
+cv.addSubview(banner); bannerShade(cv,W,H,BH);
+// Brand logo on the left of the banner (optional); title stays centred, inset so it can't overlap
+var LS=(BNAME?50:44), tx=20; if(logo){ tx=LS+32; var lv=\$.NSImageView.alloc.initWithFrame(\$.NSMakeRect(16,H-BH+(BH-LS)/2,LS,LS));
+ lv.setImage(logo); lv.imageScaling=3; if(BI_S) lv.contentTintColor=BTXT; cv.addSubview(lv); }
+// Header: small uppercase brand name above a large rounded title (or just the title, centred)
+var TH=30, tY = BNAME ? (H-BH+12) : (H-BH+(BH-TH)/2);
+var tl=label("$t",tx,tY,W-2*tx,TH,22,true,1); tl.font=rounded(22,\$.NSFontWeightBold); tl.textColor=BTXT; tl.selectable=false; cv.addSubview(tl);
+if(BNAME){ var bn=label(BNAME.toUpperCase(),tx,tY+TH+1,W-2*tx,16,11,true,1); bn.font=rounded(11,\$.NSFontWeightSemibold);
+ bn.textColor=BTXT; bn.alphaValue=0.72; bn.selectable=false; cv.addSubview(bn); }
+// Tinted SF Symbol
+var tint=$tint;
+var img=\$.NSImage.imageWithSystemSymbolNameAccessibilityDescription("$sym","");
+if(img){
+ // Soft radial glow behind the icon: the status colour fading smoothly to nothing. Drawn with a
+ // radial NSGradient (5 stops for an ease-out falloff) and placed beneath everything, so where it
+ // reaches the banner it simply disappears under it.
+ var GA=DARK?0.42:0.30;
+ var GLOWG=\$.NSGradient.alloc.initWithColors(\$([GA,GA*0.62,GA*0.30,GA*0.09,0].map(function(a){ return tint.colorWithAlphaComponent(a); })));
+ if(!\$.GlowView){ ObjC.registerSubclass({name:'GlowView',superclass:'NSView',methods:{'drawRect:':{implementation:function(r){
+  var b=this.bounds, c=\$.NSMakePoint(b.size.width/2,b.size.height/2);   // circle that ends fully transparent at its edge
+  GLOWG.drawFromCenterRadiusToCenterRadiusOptions(c,0,c,b.size.width/2,0); }}}}); }
+ var GS=170, glow=\$.GlowView.alloc.initWithFrame(\$.NSMakeRect((W-GS)/2,iconY+(haloS-GS)/2,GS,GS));
+ cv.addSubviewPositionedRelativeTo(glow,-1,null);
+ // the icon itself, with a coloured glow
+ var iv=\$.NSImageView.alloc.initWithFrame(\$.NSMakeRect((W-iconS)/2,iconY+(haloS-iconS)/2,iconS,iconS));
+ // Two-colour symbol (white mark on a coloured badge) so the glow can't show through the cut-out.
+ try{ var pc=\$.NSImageSymbolConfiguration.configurationWithPaletteColors(\$([\$.NSColor.whiteColor,tint]));
+  var pimg=img.imageWithSymbolConfiguration(pc); if(isOk(pimg)) img=pimg; }catch(e){}
+ iv.setImage(img); iv.imageScaling=3; iv.contentTintColor=tint;
+ var gl=\$.NSShadow.alloc.init; gl.shadowBlurRadius=9; gl.shadowOffset=\$.NSMakeSize(0,-1); gl.shadowColor=tint.colorWithAlphaComponent(DARK?0.7:0.45);
+ iv.shadow=gl; cv.addSubview(iv); }
+// Message
+// Message: first line is the headline (semibold, primary colour), the rest is secondary detail.
+var MSG="$m".split("\n"), m1=MSG[0], m2=MSG.slice(1).join("\n");
+if(m2){ var l1=label(m1,36,msgY+msgH-22,W-72,20,14,false,1); l1.font=\$.NSFont.systemFontOfSizeWeight(14,\$.NSFontWeightSemibold); cv.addSubview(l1);
+ var l2=label(m2,36,msgY,W-72,msgH-26,12.5,false,1); l2.textColor=\$.NSColor.secondaryLabelColor; cv.addSubview(l2); }
+else { var l0=label(m1,36,msgY,W-72,msgH,13.5,false,1); l0.font=\$.NSFont.systemFontOfSizeWeight(13.5,\$.NSFontWeightMedium); cv.addSubview(l0); }
+// Filename chip — click to show the file in Finder
 if(hasFile){
- var chip=$.NSBox.alloc.initWithFrame($.NSMakeRect(40,chipY,W-80,chipH)); chip.boxType=4; chip.borderWidth=0; chip.cornerRadius=8;
- chip.fillColor=$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.16); cv.addSubview(chip);
- var fn=$.NSTextField.alloc.initWithFrame($.NSMakeRect(52,chipY+(chipH-18)/2,W-104,18));
+ var chip=\$.NSBox.alloc.initWithFrame(\$.NSMakeRect(40,chipY,W-80,chipH));
+ chip.boxType=4; chip.cornerRadius=8;
+ chip.fillColor=ACCENT.colorWithAlphaComponent(DARK?0.14:0.09);
+ chip.borderWidth=1; chip.borderColor=ACCENT.colorWithAlphaComponent(DARK?0.35:0.28); cv.addSubview(chip);
+ var fn=\$.NSTextField.alloc.initWithFrame(\$.NSMakeRect(52,chipY+(chipH-18)/2,W-104,18));
  fn.stringValue=FNAME; fn.bezeled=false; fn.editable=false; fn.selectable=true; fn.drawsBackground=false;
- fn.alignment=1; fn.usesSingleLineMode=true; fn.cell.lineBreakMode=5; fn.textColor=$.NSColor.labelColor;
- fn.font=$.NSFont.monospacedSystemFontOfSizeWeight(12,$.NSFontWeightMedium); cv.addSubview(fn);
+ fn.alignment=1; fn.usesSingleLineMode=true; fn.cell.lineBreakMode=5; fn.textColor=\$.NSColor.labelColor;
+ fn.font=\$.NSFont.monospacedSystemFontOfSizeWeight(12,\$.NSFontWeightMedium); cv.addSubview(fn);
+ if(FPATH){
+  fn.frame=\$.NSMakeRect(52,chipY+(chipH-18)/2,W-104-26,18); fn.selectable=false;
+  // folder icon on the right of the chip
+  var fi=\$.NSImageView.alloc.initWithFrame(\$.NSMakeRect(W-40-12-20,chipY+(chipH-18)/2,20,18));
+  fi.image=\$.NSImage.imageWithSystemSymbolNameAccessibilityDescription("folder",""); fi.imageScaling=3; fi.contentTintColor=ACCENT; cv.addSubview(fi);
+  // invisible hand-cursor button over the whole chip
+  var lk=\$.LinkBtn.alloc.initWithFrame(\$.NSMakeRect(40,chipY,W-80,chipH)); lk.title=""; lk.bordered=false; lk.transparent=true;
+  lk.target=h; lk.action='reveal:'; lk.toolTip="Show in Finder"; cv.addSubview(lk);
+ }
 }
-var b=$.NSButton.alloc.initWithFrame($.NSMakeRect((W-130)/2,okY,130,32)); b.title=OKL; b.bezelStyle=1; b.target=h; b.action='ok:'; b.keyEquivalent=$('\r'); cv.addSubview(b);
+// Branded OK button: a rounded pill in the banner colour with the banner's text colour, plus an
+// invisible button on top that handles the click and the Return key.
+var bx=(W-140)/2;
+var pill=brandFill(\$.NSMakeRect(bx,okY,140,okH),true); cv.addSubview(pill);
+var bl=label("$okButton",bx,okY+(okH-18)/2,140,18,13,true,1); bl.selectable=false; bl.textColor=BTXT; cv.addSubview(bl);
+var b=\$.NSButton.alloc.initWithFrame(\$.NSMakeRect(bx,okY,140,okH)); b.title=""; b.bordered=false; b.transparent=true;
+b.target=h; b.action='ok:'; b.keyEquivalent=\$('\r'); cv.addSubview(b);
 win.center; win.makeKeyAndOrderFront(null); app.activateIgnoringOtherApps(true);
 app.runModalForWindow(win); win.orderOut(null); "";
-JXA
-  } > "$mscpt"
+EOF
   /bin/chmod 644 "$mscpt"
   run_as_user /usr/bin/osascript -l JavaScript "$mscpt" >/dev/null 2>&1
 }
@@ -743,17 +1137,22 @@ show_results() {
     print -r -- "var HEAD=\"$(as_esc "$HEADLINE")\", SUBHEAD=\"$(as_esc "$SUBHEADLINE")\";"
     print -r -- "var SCORE=$NET_SCORE, BAND=\"$(band_label $NET_SCORE)\", SC=[${ncr[1]},${ncr[2]},${ncr[3]}];"
     print -r -- "var VIDEO=\"$(as_esc "$VIDEO_TEXT")\", VIDEO_S=\"$VIDEO_STATUS\";"
+    print -rn -- "var READY=["; local _x _sep=""; for _x in "${READY[@]}"; do local -a _y=("${(@ps:\t:)_x}"); print -rn -- "${_sep}[\"$(as_esc "${_y[1]}")\",\"${_y[2]}\",\"$(as_esc "${_y[3]}")\",\"$(as_esc "${_y[4]}")\"]"; _sep=","; done; print -r -- "];"
     print -r -- "var TILES=[[\"Responsiveness\",$RESP_SCORE],[\"Reliability\",$REL_SCORE],[\"Speed\",${SPEED_SCORE:--1}]];"
-    print -r -- "var BC=[$br,$bg,$bb], TC=[$tr,$tg,$tb];"
+    print -r -- "ObjC.import('Cocoa');"
+    brand_jxa; palette_jxa
+    print -r -- "var logo=brandImg(), BNAME=\"$(as_esc "$BRAND_NAME")\";"
+    ui_common_jxa
     print -r -- "var L_OK=\"$(as_esc "$okButton")\", L_AGAIN=\"$(as_esc "$againButton")\", L_SAVE=\"$(as_esc "$saveButton")\";"
     /bin/cat <<'JXA'
 ObjC.import('Cocoa');
 function rgb(a,al){return $.NSColor.colorWithSRGBRedGreenBlueAlpha(a[0]/255,a[1]/255,a[2]/255,al==null?1:al);}
 function hex(s){s=s.replace('#','');return [parseInt(s.substr(0,2),16),parseInt(s.substr(2,2),16),parseInt(s.substr(4,2),16)];}
-function bandHex(s){return s<0?'#8E8E93':s>=90?'#34C759':s>=80?'#7CC444':s>=70?'#F2B800':s>=50?'#FF9500':'#FF3B30';}
-var DARK=(ObjC.unwrap($.NSUserDefaults.standardUserDefaults.stringForKey('AppleInterfaceStyle'))||"")=="Dark";
-var STAT=DARK?{good:'#34C759',ok:'#FFD60A',bad:'#FF453A',na:'#8E8E93'}     // green / yellow / red
-           :{good:'#1E9E48',ok:'#B8860B',bad:'#D70015',na:'#8E8E93'};    // darker shades so they read on a light window
+function bandHex(s){ if(!DARK) return s<0?'#636368':s>=90?'#146C2E':s>=80?'#346A14':s>=70?'#7D5B00':s>=50?'#9C4900':'#C4000F';   // light: darker so text reads
+ return s<0?'#8E8E93':s>=90?'#34C759':s>=80?'#7CC444':s>=70?'#F2B800':s>=50?'#FF9500':'#FF3B30'; }
+// DARK comes from the palette prelude: the user's Light/Dark setting, or APPEARANCE when forced.
+var STAT=DARK?{good:'#34C759',ok:'#FFD60A',bad:'#FF6961',na:'#98989D'}     // green / yellow / red
+           :{good:'#146C2E',ok:'#7D5B00',bad:'#C4000F',na:'#636368'};    // darker shades: 4.5:1+ on a light window
 var SWORD={good:'Good',ok:'Warning',bad:'Problem'};
 var SYMS={good:'checkmark.circle.fill',ok:'exclamationmark.triangle.fill',bad:'xmark.octagon.fill',na:'info.circle.fill'};
 function readLines(p){try{var s=ObjC.unwrap($.NSString.stringWithContentsOfFileEncodingError(p,$.NSUTF8StringEncoding,null))||"";return s.split("\n").filter(function(l){return l.length;});}catch(e){return [];}}
@@ -786,7 +1185,7 @@ var finds=readLines(FIND).map(function(l){return l.split("\t");});
 var ORD={bad:0,ok:1,na:2,good:3}; function rk(f){return /^SIMULATED/.test(f[1]||"")?-1:((f[0] in ORD)?ORD[f[0]]:2);} finds.sort(function(a,b){return rk(a)-rk(b);});   // problems at the top
 
 // ---- sizes and positions (laid out top to bottom) ----
-var W=780, BH=74, PAD=28, HERO=176, FROW=22, TILEH=70;
+var W=780, BH=(BNAME?92:74), PAD=28, HERO=176, FROW=22, TILEH=70;
 var findH=finds.length?(finds.length*FROW+44):0;
 var scr=$.NSScreen.mainScreen.visibleFrame.size.height;
 var fixedH=BH+18+HERO+14+(findH?findH+14:0)+30+20+18+32+22;
@@ -795,23 +1194,42 @@ var H=fixedH+detH;
 
 var win=$.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0,0,W,H),(1<<0)|(1<<15),2,false);
 win.titlebarAppearsTransparent=true;win.titleVisibility=1;win.movableByWindowBackground=true;
+win.appearance=APPEAR;
 var cv=win.contentView;
 
-// Banner
-cv.addSubview(rbox(0,H-BH,W,BH,rgb(BC)));
-var tl=label(TITLE,24,H-BH+30,W-48,26,19,$.NSFontWeightBold,1);tl.textColor=rgb(TC);cv.addSubview(tl);
-var st=label(SUB,24,H-BH+10,W-48,18,12,$.NSFontWeightRegular,1);st.textColor=rgb(TC,0.8);cv.addSubview(st);
+// Banner: brand colour (or the logo's own pixels), logo, brand name, title, and the computer · date line
+cv.addSubview(brandFill($.NSMakeRect(0,H-BH,W,BH),false)); bannerShade(cv,W,H,BH);
+var LS=(BNAME?58:50), btx=24;
+if(logo){ btx=LS+36; var blv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(20,H-BH+(BH-LS)/2,LS,LS)); blv.setImage(logo); blv.imageScaling=3; if(BI_S) blv.contentTintColor=BTXT; cv.addSubview(blv); }
+var tl=label(TITLE,btx,H-BH+32,W-2*btx,30,22,$.NSFontWeightBold,1);tl.font=rounded(22,$.NSFontWeightBold);tl.textColor=BTXT;cv.addSubview(tl);
+var st=label(SUB,btx,H-BH+12,W-2*btx,18,12,$.NSFontWeightRegular,1);st.textColor=BTXT;st.alphaValue=0.82;cv.addSubview(st);
+if(BNAME){ var bnl=label(BNAME.toUpperCase(),btx,H-BH+64,W-2*btx,16,11,$.NSFontWeightSemibold,1);bnl.font=rounded(11,$.NSFontWeightSemibold);bnl.textColor=BTXT;bnl.alphaValue=0.72;cv.addSubview(bnl); }
 
 // Top section: score circle, headline, and the 3 score boxes
 var top=BH+18, RS=156, heroY=H-top-HERO;
-var rv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(PAD+4,heroY+(HERO-RS)/2,RS,RS));rv.setImage(ring(RS,Math.max(0,SCORE)/100,rgb(SC)));cv.addSubview(rv);
+var rv=$.NSImageView.alloc.initWithFrame($.NSMakeRect(PAD+4,heroY+(HERO-RS)/2,RS,RS));rv.setImage(ring(RS,Math.max(0,SCORE)/100,rgb(hex(bandHex(SCORE)))));cv.addSubview(rv);
 var sn=label(SCORE<0?"–":String(SCORE),PAD+4,heroY+(HERO-RS)/2+RS/2-14,RS,52,46,$.NSFontWeightBold,1);cv.addSubview(sn);
-var sb=label(BAND.toUpperCase(),PAD+4,heroY+(HERO-RS)/2+RS/2-34,RS,18,11,$.NSFontWeightSemibold,1);sb.textColor=rgb(SC);cv.addSubview(sb);
+var sb=label(BAND.toUpperCase(),PAD+4,heroY+(HERO-RS)/2+RS/2-34,RS,18,11,$.NSFontWeightSemibold,1);sb.textColor=rgb(hex(bandHex(SCORE)));cv.addSubview(sb);
 var hx=PAD+RS+30, hw=W-hx-PAD;
 cv.addSubview(label(HEAD,hx,heroY+HERO-34,hw,28,21,$.NSFontWeightBold));
 var shl=wrapLabel(SUBHEAD,hx,heroY+HERO-76,hw,38,13);shl.textColor=$.NSColor.secondaryLabelColor;cv.addSubview(shl);
-if(VIDEO){ var vc=rgb(hex(STAT[VIDEO_S]||STAT.na)), vi=sym("video.fill",hx,heroY+82,16,vc); if(vi)cv.addSubview(vi);
- var vt=label("Video calls: "+VIDEO,hx+22,heroY+81,hw-22,18,12.5,$.NSFontWeightSemibold);vt.textColor=vc;cv.addSubview(vt); }
+// "Ready for" chips: Video · Voice · Screen share · Streaming · Uploads, each tinted by its status.
+// Hover a chip for the full sentence; the Details list has every one with its explanation.
+var RSYM={"Video calls":"video.fill","Voice calls":"phone.fill","Screen sharing":"rectangle.on.rectangle","Streaming":"play.tv.fill","Big uploads":"icloud.and.arrow.up.fill"};
+var RSHORT={"Video calls":"Video","Voice calls":"Voice","Screen sharing":"Share","Streaming":"Stream","Big uploads":"Upload"};
+var CHF=$.NSFont.systemFontOfSizeWeight(11.5,$.NSFontWeightSemibold);
+function tw(s){ return Math.ceil($(s).sizeWithAttributes($.NSDictionary.dictionaryWithObjectForKey(CHF,$.NSFontAttributeName)).width); }
+if(READY.length){
+ var chips=READY.map(function(r){ var t=(RSHORT[r[0]]||r[0])+" "+r[2]; return {r:r,t:t,w:tw(t)+31}; });
+ var tot=chips.reduce(function(a,c){return a+c.w;},0)+5*(chips.length-1);
+ if(tot>hw){ chips.forEach(function(c){ c.t=c.r[2]; c.w=tw(c.t)+31; }); }   // too wide: show just the verdict word + icon
+ var cx=hx;
+ chips.forEach(function(c){ var s=c.r[1]||"na", col=rgb(hex(STAT[s]||STAT.na));
+  cv.addSubview(rbox(cx,heroY+80,c.w,22,rgb(hex(STAT[s]||STAT.na),DARK?0.16:0.11),11));
+  var ci=sym(RSYM[c.r[0]]||"circle.fill",cx+8,heroY+84,14,col); if(ci)cv.addSubview(ci);
+  var cl=label(c.t,cx+25,heroY+83,c.w-27,16,11.5,$.NSFontWeightSemibold);cl.font=CHF;cl.textColor=col;cl.toolTip=c.r[0]+": "+c.r[3];cv.addSubview(cl);
+  cx+=c.w+5; });
+}
 var tg=12, tw=(hw-2*tg)/3;
 for(var i=0;i<TILES.length;i++){
  var tx=hx+i*(tw+tg), ty=heroY+6, sc=TILES[i][1], col=rgb(hex(bandHex(sc)));
@@ -840,7 +1258,7 @@ if(findH){
 // wrap onto more lines instead of getting cut off), and a Good / Warning / Problem badge on the right.
 var dw=W-2*PAD, SECH=34, RH=26, HDH=46, docH=12;
 var dl=label("Details",PAD,y-22,300,18,13,$.NSFontWeightSemibold);cv.addSubview(dl);
-var dh=label("Click a badge to see why",PAD+300,y-22,dw-300,18,11,$.NSFontWeightRegular,2);dh.textColor=$.NSColor.tertiaryLabelColor;cv.addSubview(dh);
+var dh=label("Click a badge to see why",PAD+300,y-22,dw-300,18,11,$.NSFontWeightRegular,2);dh.textColor=$.NSColor.secondaryLabelColor;cv.addSubview(dh);
 y-=30;
 var LX=38, VX=246, LBW=VX-LX-10, BW=82, BX=dw-20-BW, VW=BX-VX-12;
 var FL=$.NSFont.systemFontOfSize(12), FV=$.NSFont.systemFontOfSizeWeight(12.5,$.NSFontWeightMedium);
@@ -864,12 +1282,12 @@ function showWhy(btn){var e=WHY[btn.tag]; if(!e)return; if(POP){POP.close;POP=nu
 rows.forEach(function(r){
  if(r[0]=="H"){   // the line that splits the user stuff from the "For IT" stuff
   dy-=HDH; alt=0;
-  var hl=label(r[1].toUpperCase(),0,dy+12,dw,16,10.5,$.NSFontWeightBold,1);hl.textColor=$.NSColor.tertiaryLabelColor;doc.addSubview(hl);
+  var hl=label(r[1].toUpperCase(),0,dy+12,dw,16,10.5,$.NSFontWeightBold,1);hl.textColor=$.NSColor.secondaryLabelColor;doc.addSubview(hl);
   doc.addSubview(rbox(16,dy+19,(dw-260)/2,1,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.35)));
   doc.addSubview(rbox(dw-16-(dw-260)/2,dy+19,(dw-260)/2,1,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.35)));
  } else if(r[0]=="S"){
   dy-=SECH; alt=0;
-  var ic=sym(r[2]||"circle",12,dy+7,17,rgb(BC)); if(ic)doc.addSubview(ic);
+  var ic=sym(r[2]||"circle",12,dy+7,17,ACCENT); if(ic)doc.addSubview(ic);
   doc.addSubview(label(r[1],38,dy+6,dw-60,20,13.5,$.NSFontWeightSemibold));
   doc.addSubview(rbox(12,dy+2,dw-28,1,$.NSColor.colorWithSRGBRedGreenBlueAlpha(0.5,0.5,0.5,0.25)));
  } else {
@@ -899,10 +1317,20 @@ sv.contentView.scrollToPoint($.NSMakePoint(0,docH-sv.contentView.bounds.size.hei
 
 // Note + buttons
 var nt=label(NOTE,PAD,22+32+10,W-2*PAD,16,11,$.NSFontWeightRegular,1);nt.textColor=$.NSColor.secondaryLabelColor;cv.addSubview(nt);
-function btn(t,x,w,act,key){var b=$.NSButton.alloc.initWithFrame($.NSMakeRect(x,20,w,32));b.title=t;b.bezelStyle=1;b.target=hd;b.action=act;if(key)b.keyEquivalent=$(key);cv.addSubview(b);return b;}
-btn(L_AGAIN,PAD,130,'again:');
-btn(L_SAVE,W-PAD-130-10-130,130,'save:');
-btn(L_OK,W-PAD-130,130,'done:','\r');
+// Buttons: all three are the same 140x34 pill. Done (the main action, Return key) is filled with the
+// banner colour; Run Again and Save Report are tinted with the accent colour. An invisible NSButton on
+// top of each pill handles the click and the keyboard shortcut.
+var PBW=140, PBH=34, PBY=18;
+function pill(t,x,act,key,primary){
+ if(primary) cv.addSubview(brandFill($.NSMakeRect(x,PBY,PBW,PBH),true));
+ else { var bx=$.NSBox.alloc.initWithFrame($.NSMakeRect(x,PBY,PBW,PBH)); bx.boxType=4; bx.titlePosition=0; bx.cornerRadius=PBH/2;
+   bx.fillColor=ACCENT.colorWithAlphaComponent(DARK?0.20:0.12); bx.borderWidth=1; bx.borderColor=ACCENT.colorWithAlphaComponent(DARK?0.45:0.35); cv.addSubview(bx); }
+ var lb=label(t,x,PBY+(PBH-18)/2,PBW,18,13,$.NSFontWeightSemibold,1); lb.textColor=primary?BTXT:ACCENT; cv.addSubview(lb);
+ var b=$.NSButton.alloc.initWithFrame($.NSMakeRect(x,PBY,PBW,PBH)); b.title=""; b.bordered=false; b.transparent=true;
+ b.target=hd; b.action=act; if(key) b.keyEquivalent=$(key); cv.addSubview(b); return b; }
+pill(L_AGAIN,PAD,'again:',null,false);
+pill(L_SAVE,W-PAD-PBW-12-PBW,'save:',null,false);
+pill(L_OK,W-PAD-PBW,'done:','\r',true);
 
 win.center;win.makeKeyAndOrderFront(null);app.activateIgnoringOtherApps(true);
 var resp=app.runModalForWindow(win);win.orderOut(null);
@@ -1640,7 +2068,7 @@ speed_cloudflare() {
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   isnum "$t" && (( t > 0 )) || return 1
   DL_MBPS=$(calc "$t*8/1000000")
-  spin_status 3 "Testing upload speed" "Uploading to speed.cloudflare.com…" $(( (P_SPD[1]+P_SPD[2])/2 )) ${P_SPD[2]} $(( SPEED_MAX_SECONDS/2 + 1 ))
+  spin_status 3 "Testing upload speed" "Part 2 of 2 · uploading to speed.cloudflare.com…" $(( (P_SPD[1]+P_SPD[2])/2 )) ${P_SPD[2]} $(( SPEED_MAX_SECONDS/2 + 1 ))
   /bin/dd if=/dev/zero of="$up" bs=1000000 count=$(( CF_UP_BYTES / 1000000 )) 2>/dev/null
   lim $(( SPEED_MAX_SECONDS + 5 )) /usr/bin/curl -s -o /dev/null -m "$SPEED_MAX_SECONDS" -w '%{speed_upload}' --data-binary @"$up" "https://speed.cloudflare.com/__up" > "$SCRATCH/cf_up.txt" 2>/dev/null &
   cpid=$!; throughput_monitor $cpid up; wait $cpid; t=$(<"$SCRATCH/cf_up.txt")
@@ -1772,11 +2200,12 @@ simulate_run() {
   (( NO_INTERNET )) || fact "g:All ${#WEB_TARGETS} loaded" "websites"
   check_cancel; sim_sleep 2; mark web_dns
   if [[ "$SPEED_ENGINE" != off ]] && (( ! NO_INTERNET )); then
-    spin_status 3 "Testing download & upload speed" "Simulated…" ${P_SPD[1]} ${P_SPD[2]} 6
+    spin_status 3 "Testing download speed" "Part 1 of 2 · downloading… (simulated)" ${P_SPD[1]} $(( (P_SPD[1]+P_SPD[2])/2 )) 3
     for (( i=0; i<12; i++ )); do
       check_cancel
-      if (( i < 6 )); then v=$(r0 "$(calc "$DL_MBPS*(0.7+($RANDOM%30)/100)")"); sd+=($v); live_metric "c:↓ $v" "Mbps right now" "${(j:,:)sd}" ""
-      else v=$(r0 "$(calc "$UL_MBPS*(0.7+($RANDOM%30)/100)")"); su+=($v); live_metric "p:↑ $v" "Mbps right now" "" "${(j:,:)su}"; fi
+      (( i == 6 )) && spin_status 3 "Testing upload speed" "Part 2 of 2 · uploading… (simulated)" $(( (P_SPD[1]+P_SPD[2])/2 )) ${P_SPD[2]} 3
+      if (( i < 6 )); then v=$(r0 "$(calc "$DL_MBPS*(0.7+($RANDOM%30)/100)")"); sd+=($v); live_metric "c:↓ $v" "Mbps · downloading" "${(j:,:)sd}" ""
+      else v=$(r0 "$(calc "$UL_MBPS*(0.7+($RANDOM%30)/100)")"); su+=($v); live_metric "p:↑ $v" "Mbps · uploading" "${(j:,:)su}" ""; fi
       sim_sleep 0.5
     done
     fact "c:↓ $(r0 $DL_MBPS)|w:    |p:↑ $(r0 $UL_MBPS)" "Mbps  ·  final result"
@@ -1787,7 +2216,7 @@ simulate_run() {
   return 0
 }
 
-SCRIPT_VERSION="1.3"
+SCRIPT_VERSION="1.4"
 
 # --- Step timing ------------------------------------------------------------------------------------
 # mark <step name> - writes down how long that step took. Shows up in the log, report, and JSON.
@@ -1821,6 +2250,7 @@ write_json() {
     print -r -- "  \"simulated\": $([[ -n $SIMULATE ]] && jstr "$SIMULATE" || print -n null), \"mode\": $(jstr "$ACTION_MODE"), \"test_seconds\": $TEST_SECONDS,"
     print -r -- "  \"scores\": {\"network\": $(jnum $NET_SCORE), \"band\": $(jstr "$(band_label $NET_SCORE)"), \"responsiveness\": $(jnum $RESP_SCORE), \"reliability\": $(jnum $REL_SCORE), \"speed\": $(jnum "$SPEED_SCORE")},"
     print -r -- "  \"headline\": $(jstr "$HEADLINE"), \"video_calls\": $(jstr "$VIDEO_TEXT"),"
+    print -rn -- "  \"ready_for\": {"; t=""; local _rr; for _rr in "${READY[@]}"; do local -a _z=("${(@ps:\t:)_rr}"); print -rn -- "$t$(jstr "${(L)${_z[1]// /_}}"): {\"status\": $(jstr "${_z[2]}"), \"verdict\": $(jstr "${_z[3]}"), \"detail\": $(jstr "${_z[4]}")}"; t=", "; done; print -r -- "},"
     print -r -- "  \"connection\": {\"type\": $(jstr "$CONN_TYPE"), \"interface\": $(jstr "$PHYS_IF"), \"ssid\": $(jstr "$WIFI_SSID"), \"ip\": $(jstr "$LOCAL_IP"), \"router\": $(jstr "$GATEWAY"), \"dns\": $(jstr "$DNS_SERVERS"), \"public_ip\": $(jstr "$PUB_IP"), \"isp\": $(jstr "$PUB_ISP"), \"vpn\": $(jstr "$VPN_NAME")},"
     print -r -- "  \"wifi\": {\"rssi\": $(jnum "$WIFI_RSSI"), \"noise\": $(jnum "$WIFI_NOISE"), \"band_ghz\": $(jnum "$WIFI_BAND"), \"channel\": $(jnum "$WIFI_CH"), \"width_mhz\": $(jnum "$WIFI_WIDTH"), \"tx_mbps\": $(jnum "$WIFI_TX"), \"rssi_min\": $(jnum "$WS_MIN"), \"rssi_max\": $(jnum "$WS_MAX")},"
     print -r -- "  \"responsiveness\": {\"lag_ms\": $(jnum "$INET_LAG"), \"latency_ms\": $(jnum "$INET_LAT"), \"jitter_ms\": $(jnum "$INET_JIT"), \"loss_pct\": $(jnum "$INET_LOSS"), \"router_ms\": $(jnum "$R_LAT"), \"isp_hop_ms\": $(jnum "$ISP_HOP_MS"), \"method\": $(jstr "$INET_METHOD")},"
@@ -2104,7 +2534,7 @@ run_tests() {
   local engine="$SPEED_ENGINE"; (( NO_INTERNET )) && engine="off"
   if [[ "$engine" != off ]]; then
     fact "w:…" "Mbps right now  ·  starting speed test"
-    spin_status 3 "Testing download & upload speed" "Up to ${SPEED_MAX_SECONDS}s — this is the longest step" ${P_SPD[1]} ${P_SPD[2]} $(( SPEED_MAX_SECONDS + 3 ))
+    spin_status 3 "Testing download speed" "Part 1 of 2 · downloading…" ${P_SPD[1]} $(( (P_SPD[1]+P_SPD[2])/2 )) $(( SPEED_MAX_SECONDS/2 + 2 ))
     if [[ "$engine" == apple ]] && [[ -x /usr/bin/networkQuality ]]; then
       speed_apple || { logMe INFO "networkQuality failed — falling back to Cloudflare"; speed_cloudflare; }
     else
@@ -2171,6 +2601,45 @@ run_tests() {
     [[ "$BLOAT_GRADE" == [DF] ]] && { VIDEO_STATUS=ok; VIDEO_TEXT="Ready, but may stutter during big uploads/downloads"; }
   elif (( INET_LAT <= 250 && INET_JIT <= 50 && LOSS_EFF < 3 )); then VIDEO_STATUS=ok; VIDEO_TEXT="Usable — may stutter or freeze at times"
   else VIDEO_STATUS=bad; VIDEO_TEXT="Poor — expect freezing, robotic audio, or drops"; fi
+
+  # More "ready for" verdicts, from the same measurements. Each entry: name, status, short word, sentence.
+  #   Voice calls     - audio only: a bit more forgiving than video on lag and jitter
+  #   Screen sharing  - remote desktop / screen share: needs low lag AND some upload
+  #   Streaming       - by download speed (4K / HD / SD), knocked down a level if the connection dropped out
+  #   Big uploads     - backups, large files, cloud sync: by upload speed; bufferbloat is called out
+  typeset -ga READY; READY=()
+  ready_add() { READY+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"); }
+  local vs="${VIDEO_TEXT%%[,—]*}"; vs="${vs%% }"   # the chip word = the verdict's first word ("Ready", "Usable", "Poor", "Not ready")
+  ready_add "Video calls" "$VIDEO_STATUS" "$vs" "$VIDEO_TEXT"
+  if (( NO_INTERNET )); then
+    ready_add "Voice calls" bad "Poor" "Not ready — no internet"
+    ready_add "Screen sharing" bad "Poor" "Not ready — no internet"
+  else
+    if (( INET_LAT <= 200 && INET_JIT <= 40 && LOSS_EFF < 2 && REL_SCORE >= 90 )); then ready_add "Voice calls" good "Ready" "Ready — clear audio expected"
+    elif (( INET_LAT <= 300 && INET_JIT <= 60 && LOSS_EFF < 5 )); then ready_add "Voice calls" ok "Usable" "Usable — audio may sound choppy at times"
+    else ready_add "Voice calls" bad "Poor" "Poor — expect robotic or dropped audio"; fi
+    local ulok=1 ulmin=1; isnum "$UL_MBPS" && { (( UL_MBPS >= 3 )) || ulok=0; (( UL_MBPS >= 1 )) || ulmin=0; }
+    if (( INET_LAT <= 80 && INET_JIT <= 20 && LOSS_EFF < 1 && REL_SCORE >= 90 && ulok )); then ready_add "Screen sharing" good "Ready" "Ready — screen sharing and remote desktop should feel snappy"
+    elif (( INET_LAT <= 150 && LOSS_EFF < 3 && ulmin )); then ready_add "Screen sharing" ok "Usable" "Usable — remote sessions may feel a little laggy"
+    else ready_add "Screen sharing" bad "Poor" "Poor — screen sharing and remote desktop will lag badly"; fi
+  fi
+  if isnum "$DL_MBPS"; then
+    local st sw sx
+    if   (( DL_MBPS >= 25 )); then st=good; sw="4K"; sx="Enough for 4K streaming"
+    elif (( DL_MBPS >= 8 ));  then st=good; sw="HD"; sx="Enough for HD streaming (not 4K)"
+    elif (( DL_MBPS >= 3 ));  then st=ok;   sw="SD"; sx="Standard definition only — HD may buffer"
+    else                           st=bad;  sw="Poor"; sx="Too slow — video will buffer"; fi
+    (( REL_SCORE < 90 )) && [[ $st == good ]] && { st=ok; sx+=", but it may buffer during drop-outs"; }
+    ready_add "Streaming" $st "$sw" "$sx"
+  fi
+  if isnum "$UL_MBPS"; then
+    local ut uw ux
+    if   (( UL_MBPS >= 20 )); then ut=good; uw="Fast"; ux="Large uploads and backups move quickly"
+    elif (( UL_MBPS >= 5 ));  then ut=ok;   uw="Slow"; ux="Large uploads and backups will take a while"
+    else                           ut=bad;  uw="Very slow"; ux="Large uploads and backups will crawl"; fi
+    [[ "$BLOAT_GRADE" == [DF] && $ut != bad ]] && { ut=ok; ux+=" — and calls slow down while uploading (bufferbloat)"; }
+    ready_add "Big uploads" $ut "$uw" "$ux"
+  fi
 
   # The headline (like "Fast & Responsive") depends on how responsiveness and speed did
   local rgood=0 sgood=0; (( RESP_SCORE >= 80 )) && rgood=1; [[ -n "$SPEED_SCORE" ]] && (( SPEED_SCORE >= 80 )) && sgood=1
@@ -2306,6 +2775,7 @@ run_tests() {
   [[ -n "$PUB_ISP" ]] && row "$( (( VPN_ACTIVE )) && print "Internet provider (VPN's)" || print "Internet provider")" "$PUB_ISP${PUB_LOC:+ · $PUB_LOC}" na
   row "VPN" "$( (( VPN_ACTIVE )) && print -r -- "$VPN_NAME (on)" || print Off)" na
   row "Video calls" "$VIDEO_TEXT" "$VIDEO_STATUS"
+  local _r; for _r in "${READY[@]:1}"; do local -a _q=("${(@ps:\t:)_r}"); row "${_q[1]}" "${_q[4]}" "${_q[2]}"; done
 
   if [[ "$CONN_TYPE" == "Wi-Fi" ]]; then
     section "Wi-Fi Signal" "wifi"
@@ -2569,6 +3039,9 @@ if [[ -n "$SIMULATE" ]]; then
   done
 fi
 
+# Branding: resolve the logo and build the light/dark colour palette once (windows only).
+[[ "$ACTION_MODE" == verbose ]] && { resolve_brand_icon; build_palette; }
+
 while true; do
   : > "$FACTS_FILE"; : > "$LIVE_FILE"; : > "$CANCEL_FILE"
   spin_status 0 "Starting…" "" 0 2 1
@@ -2605,16 +3078,22 @@ while true; do
       SERIAL="$(device_serial)"; [[ -z "$SERIAL" ]] && SERIAL="unknown"
       REPORT_NAME="${REPORT_NAME_PATTERN//\{USER\}/$targetUser}"
       REPORT_NAME="${REPORT_NAME//\{SERIAL\}/$SERIAL}"
-      REPORT_NAME="${REPORT_NAME//\{STAMP\}/$(/bin/date +%Y%m%d-%H%M%S)}"
+      _stamp="$(/bin/date "+${STAMP_FORMAT:-%Y-%m-%d_%H-%M}")"; _stamp="${_stamp//[:\/]/-}"   # no : or / in file names
+      REPORT_NAME="${REPORT_NAME//\{STAMP\}/$_stamp}"
       DESKTOP="$USER_HOME/Desktop"; [[ -d "$DESKTOP" ]] || DESKTOP="$USER_HOME"
+      if [[ -e "$DESKTOP/$REPORT_NAME" ]]; then   # never overwrite an earlier report: add _2, _3, ...
+        _base="${REPORT_NAME%.*}"; _ext="${REPORT_NAME##*.}"; _n=2
+        while [[ -e "$DESKTOP/${_base}_$_n.$_ext" ]]; do (( _n++ )); done
+        REPORT_NAME="${_base}_$_n.$_ext"
+      fi
       if /bin/cp "$REPORT_FILE" "$DESKTOP/$REPORT_NAME" 2>/dev/null; then
         (( amRoot )) && /usr/sbin/chown "$targetUser" "$DESKTOP/$REPORT_NAME" 2>/dev/null
         logMe INFO "Report saved: $DESKTOP/$REPORT_NAME"
         run_as_user /usr/bin/open -R "$DESKTOP/$REPORT_NAME" 2>/dev/null
-        show_message "$SAVED_TITLE" "doc.text.fill" "#34C759" "Your network report was saved to your Desktop.\nAttach it to your IT ticket." "$REPORT_NAME"
+        show_message "$SAVED_TITLE" "arrow.down.doc.fill" ok "Your network report was saved to your Desktop.\nAttach it to your IT ticket." "$REPORT_NAME" "$DESKTOP/$REPORT_NAME"
       else
         logMe ERROR "Could not save report to $DESKTOP"
-        show_message "$SAVED_TITLE" "xmark.octagon.fill" "#FF3B30" "The report could not be saved to your Desktop. Contact IT for help." ""
+        show_message "$SAVED_TITLE" "xmark.octagon.fill" fail "The report could not be saved to your Desktop. Contact IT for help." ""
       fi
       break ;;
     *) break ;;
