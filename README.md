@@ -48,6 +48,9 @@ Collects logs and system details into a branded zip on the user's Desktop, ready
 ### [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check)
 Tests the Mac's connection and shows a 0–100 score, what it's ready for, plain-English findings, and IT details.
 
+### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
+Shows what's filling the disk: free space, a breakdown, the biggest items, and ways to free up space.
+
 ## Featured Scripts
 
 ### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
@@ -96,6 +99,11 @@ Tests the Mac's network and shows a 0–100 Network Score, plain-English verdict
 Gathers logs from across the Mac, including Jamf, App Auto-Patch, Installomator and sandboxed app logs, plus device, security and network details and install history. It zips them up and drops the archive on the user's Desktop, ready to attach to a support ticket. It supports your logo and colors (including your Jamf Self Service branding) in light and dark mode.
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/result_dark.png" width="49%">
+
+### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
+Shows the user and IT what's filling up the Mac's disk. It measures the whole disk in one pass with live progress, then shows how full the disk is, what's using the space (home folder, apps, other users, macOS and system), the biggest items (click one to show it in Finder), and ways to free up space. It saves a full report for the ticket, and supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/result_dark.png" width="49%">
 
 </div>
 
