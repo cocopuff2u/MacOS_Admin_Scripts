@@ -47,6 +47,11 @@ Gives the user a fresh login keychain to stop the "login keychain" password prom
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain/images/confirm.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain/images/done_dark.png" width="49%">
 
+### [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot)
+Reminds the user to restart once their Mac has been up too long. It shows the uptime ticking live, how many days overdue it is, and why restarting helps. Restart Now starts a countdown that lists the apps still open (click one to save your work in it). It never interrupts a meeting, can limit how many times the user postpones, and supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot/images/reminder.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot/images/countdown_dark.png" width="42%">
+
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
 <br />
@@ -61,11 +66,6 @@ Prompts users to upgrade macOS via the Install Assistant pkg, encouraging them t
 Allows the local logged-in user to test their password, useful in SmartCard-enforced environments.
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/User_Password_Tester_Script/images/firstwindow.png" width="50%">
-
-### [User Recommend Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
-Recommends users to reboot their devices based on a maximum uptime setting.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
 
 
 ## Available Scripts
@@ -117,6 +117,9 @@ Lets the user search for and set their time zone, turn automatic time zone on or
 
 ### [Reset User Keychain](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain)
 Gives the user a fresh login keychain to fix password prompts after a password change. The old keychain is backed up, not deleted.
+
+### [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot)
+Reminds the user to restart once their Mac has been up too long, with a countdown to save their work (and it skips meetings).
 
 </div>
 
