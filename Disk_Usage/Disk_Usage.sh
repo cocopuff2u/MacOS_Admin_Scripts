@@ -243,7 +243,7 @@ icon_color() {
   REPLY=""
   [[ -n "$BRAND_ICON_FILE" ]] || return 0
   local js="$SCRATCH/iconcolor.jxa" out
-  { print -r -- "ObjC.import('Cocoa');"; brand_jxa; /bin/cat <<'EOF'
+  { print -r -- "ObjC.import('Cocoa'); ObjC.import('CoreGraphics');"; brand_jxa; /bin/cat <<'EOF'
 (function(){ var img=brandImg(); if(!img) return "";
  // Read the image's own pixels (no redraw, so colours aren't shifted) on a ~32x32 grid.
  var rep=$.NSBitmapImageRep.imageRepWithData(img.TIFFRepresentation); if(!isOk(rep)) return "";
@@ -466,7 +466,7 @@ SPIN_SCPT="$SCRATCH/spin.jxa"
 show_spinner() {
   [[ "$ACTION_MODE" == "verbose" ]] || return 0
   {
-    print -r -- "ObjC.import('Cocoa');"
+    print -r -- "ObjC.import('Cocoa'); ObjC.import('CoreGraphics');"
     print -r -- "var STATUS=\"$(as_esc "$STATUS_FILE")\", CANCEL=\"$(as_esc "$CANCEL_FILE")\", CANCEL_L=\"$(as_esc "$cancelButton")\", STITLE=\"$(as_esc "$SPINNER_TEXT")\";"
     brand_jxa; palette_jxa
     print -r -- "var logo=brandImg(), BNAME=\"$(as_esc "$BRAND_NAME")\";"
@@ -573,7 +573,7 @@ kill_spinner() { /usr/bin/pkill -f "$SPIN_SCPT" 2>/dev/null; return 0; }
 show_results() {
   local rscpt="$SCRATCH/results.jxa"
   {
-    print -r -- "ObjC.import('Cocoa');"
+    print -r -- "ObjC.import('Cocoa'); ObjC.import('CoreGraphics');"
     print -r -- "var VISROWS=${BIG_ITEMS_SHOWN:-7};"
     print -r -- "var DATA=\"$(as_esc "$DATA_FILE")\", RTITLE=\"$(as_esc "$RESULT_TITLE")\", SUBT=\"$(as_esc "$RUN_SUBTITLE")\", DCHIP=\"$(as_esc "$DISK_CHIP")\", NOTE=\"$(as_esc "$RESULT_NOTE")\";"
     print -r -- "var HEAD=\"$(as_esc "$HEAD")\", SUBHEAD=\"$(as_esc "$SUBHEAD")\", STATUS=\"$DISK_STATUS\", USED_FRAC=$USED_FRAC, FREE_KB=$(( DISK_FREE / 1024 ));"
@@ -630,8 +630,19 @@ function stackImg(w,h,segs,totalKB){var img=$.NSImage.alloc.initWithSize($.NSMak
 var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);
 var REV=[];
 // Put Finder in front of this window after showing an item (macOS otherwise opens it behind us).
-function bringFinder(){ try{ var fa=$.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.apple.finder");
- if(fa.count>0){ fa=fa.objectAtIndex(0); try{ $.NSApplication.sharedApplication.yieldActivationToApplication(fa); }catch(e){} fa.activateWithOptions(1|2); } }catch(e){} }
+// bringFinder(): put the Finder window that was just opened in front of this one. Asks Finder to come forward;
+// when macOS won't hand it the focus (run by Jamf / sudo, or because this window is modal), this window steps
+// back to sit just below Finder's window, so the item shown is always visible and nothing else is covered.
+function bringFinder(){ try{ var app=$.NSApplication.sharedApplication;
+ var fa=$.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.apple.finder"); if(!(fa.count>0)) return; fa=fa.objectAtIndex(0);
+ try{ app.yieldActivationToApplication(fa); }catch(e){}
+ var ok=false; try{ ok=fa.activateFromApplicationOptions($.NSRunningApplication.currentApplication,0); }catch(e){} if(!ok) fa.activateWithOptions(1|2);
+ $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.4));
+ var w=app.keyWindow; if(!w || w.isNil()) w=app.modalWindow; if(!w || w.isNil()) return;
+ var fw=0, pid=fa.processIdentifier, l=ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1|16,0));   // Finder's top window
+ for(var i=0;i<l.count;i++){ var d=l.objectAtIndex(i);
+  if(ObjC.unwrap(d.objectForKey("kCGWindowOwnerPID"))==pid && ObjC.unwrap(d.objectForKey("kCGWindowLayer"))==0){ fw=ObjC.unwrap(d.objectForKey("kCGWindowNumber")); break; } }
+ w.level=0; if(fw) w.orderWindowRelativeTo(-1,fw); else w.orderBack(null); }catch(e){} }
 if(!$.DURes){ObjC.registerSubclass({name:'DURes',superclass:'NSObject',methods:{
  'done:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(1);}},
  'save:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(3);}},
@@ -1175,7 +1186,7 @@ show_message() {
   local t="${1//\"/\\\"}" sym="$2" m="${4//\"/\\\"}" fname="${5//\"/\\\"}" fpath="$(as_esc "$6")" mscpt="$SCRATCH/result.jxa"
   local tint="OKC"; [[ "$3" == fail ]] && tint="FAILC"
   /bin/cat > "$mscpt" <<EOF
-ObjC.import('Cocoa');
+ObjC.import('Cocoa'); ObjC.import('CoreGraphics');
 $(brand_jxa)
 $(palette_jxa)
 var logo=brandImg(), BNAME="$(as_esc "$BRAND_NAME")";
