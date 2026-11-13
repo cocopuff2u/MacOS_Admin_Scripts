@@ -8,22 +8,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 > **Network Health Check** has moved to its own folder: [`/Network_Health_Check`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check).
 > **Delete Expired Certificates** has moved to its own folder: [`/Delete_Expired_Certificates`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates).
 > **Set Time Zone** has moved to its own folder: [`/Set_Time_Zone`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone).
-
-### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Recommend_User_Reboot.sh)
-
-- **Description**: Reminds the user to restart once their Mac has been up beyond a set number of days. Shows a branded reminder; if they agree, a **live countdown** gives them time to save work before the Mac restarts. Fully native — **no swiftDialog or JamfHelper**; the GUI is `osascript` (JXA) + AppKit, shown in the console user's session, so it works even when run as root from Jamf.
-- **Respects the user**: skips the prompt while a meeting / screen share / presentation / full-screen video is active (a display-sleep assertion is held).
-- **Jamf parameters**: `$4` uptime days (blank = 14), `$5` countdown minutes (blank = 5), `$6` dry run (`dry`/`true` = show the dialogs without restarting, for testing).
-- **Configurable variables**: `bannerColor`, `windowTitle`, `iconStyle` (`selfservice` = the Self Service app icon, falling back to the SF Symbol; or `symbol`), `restartIcon` (SF Symbol), `ignoreAssertionApps`.
-- **No dependencies** — uses only built-in macOS tools.
-
-**Reminder:**
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendreboot_reminder.png" width="50%">
-
-**Live countdown** (after the user clicks Restart Now):
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendreboot_countdown.png" width="50%">
+> **Recommend User Reboot** has moved to its own folder: [`/Recommend_User_Reboot`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot).
 
 ## How to Download and Execute Scripts
 
