@@ -92,7 +92,7 @@ STATE_FILE="/Library/Application Support/RecommendUserReboot/state.plist"   # re
 logFile="/var/log/recommend_user_reboot.log"   # this script's own run log
 
 # BRANDING (windows only) ---------------------------------------------------
-BRAND_NAME="Wave IT Support"    # small line above the banner title — your team, e.g. "Acme IT". Blank = none. ($9)
+BRAND_NAME="IT Support"    # small line above the banner title — your team, e.g. "Acme IT". Blank = none. ($9)
 BRAND_ICON="ss"              # optional logo ($7). Accepts any ONE of:
                            #   • an image file  /Library/Application Support/Acme/logo.png
                            #   • an app/folder  /Applications/Self Service.app   (uses its Finder icon)
