@@ -793,7 +793,10 @@ var cv=win.contentView;
 header(cv,W,H,BH,PAD,PTITLE,PSUB,DRY?"Preview only":"",DRY?"eye.fill":"");
 
 // Toolbar: search on the left, sort on the right
-var search=$.NSSearchField.alloc.initWithFrame($.NSMakeRect(PAD,tbY,280,TBH)); search.placeholderString="Search apps";
+// A search field that takes the first click (so it works even before the window is active)
+if(!$.UNSearch){ ObjC.registerSubclass({name:'UNSearch',superclass:'NSSearchField',methods:{
+ 'acceptsFirstMouse:':{types:['bool',['id']],implementation:function(e){ return true; }}}}); }
+var search=$.UNSearch.alloc.initWithFrame($.NSMakeRect(PAD,tbY,280,TBH)); search.placeholderString="Search apps";
 search.target=hd; search.action='search:'; try{ search.sendsSearchStringImmediately=true; }catch(e){} cv.addSubview(search);
 var sorter=$.NSSegmentedControl.segmentedControlWithLabelsTrackingModeTargetAction($(["Name","Size","Last Opened"]),0,hd,'sort:');
 sorter.sizeToFit; var sgw=Math.max(250,sorter.frame.size.width); sorter.frame=$.NSMakeRect(W-PAD-sgw,tbY+2,sgw,24); sorter.selectedSegment=0;
@@ -858,6 +861,7 @@ function update(){
 }
 layout(); update();
 win.center; win.makeKeyAndOrderFront(null); win.makeFirstResponder(search); app.activateIgnoringOtherApps(true);
+try{ app.activate; }catch(e){} try{ $.NSRunningApplication.currentApplication.activateWithOptions(3); }catch(e){}   // macOS 14+: really come to the front
 var resp=app.runModalForWindow(win); win.orderOut(null);
 var out=[]; ROWS.forEach(function(r,i){ if(ObjC.unwrap(r.cb.state)==1) out.push(i); });
 (resp==1 && out.length) ? out.join(",") : "__CANCEL__";
