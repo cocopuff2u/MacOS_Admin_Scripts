@@ -93,7 +93,7 @@ logFile="/var/log/recommend_user_reboot.log"   # this script's own run log
 
 # BRANDING (windows only) ---------------------------------------------------
 BRAND_NAME="IT Support"    # small line above the banner title — your team, e.g. "Acme IT". Blank = none. ($9)
-BRAND_ICON="ss"              # optional logo ($7). Accepts any ONE of:
+BRAND_ICON=""              # optional logo ($7). Accepts any ONE of:
                            #   • an image file  /Library/Application Support/Acme/logo.png
                            #   • an app/folder  /Applications/Self Service.app   (uses its Finder icon)
                            #   • a URL          https://acme.com/logo.png         (downloaded each run)
