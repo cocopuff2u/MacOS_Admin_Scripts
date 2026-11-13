@@ -7,6 +7,7 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 > **Collect User Logs** has moved to its own folder: [`/Collect_User_Logs`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs).
 > **Network Health Check** has moved to its own folder: [`/Network_Health_Check`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check).
 > **Delete Expired Certificates** has moved to its own folder: [`/Delete_Expired_Certificates`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates).
+> **Set Time Zone** has moved to its own folder: [`/Set_Time_Zone`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone).
 
 ### 1. [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Recommend_User_Reboot.sh)
 
@@ -23,28 +24,6 @@ These scripts provide a range of prompts and tools to perform local tasks on mac
 **Live countdown** (after the user clicks Restart Now):
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendreboot_countdown.png" width="50%">
-
-### 2. [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/Set_Time_Zone.sh)
-
-- **Description**: Lets the logged-in user set the Mac's time zone from a branded, native picker, then confirms. Fully native — **no swiftDialog or JamfHelper**. The GUI is built with `osascript` (JXA) + AppKit and shown in the console user's session, so it works even when run as root from Jamf.
-- **Two picker styles** (set `pickerStyle`):
-  - `"dropdown"` *(default)* — an **Area** menu plus a **Zone** menu that repopulates when the area changes.
-  - `"list"` — one scrollable, fixed-height list of every `Area/City` zone.
-- **Configurable variables** (top of the script):
-  - `bannerColor` — banner bar colour, hex (e.g. `#0056D2`)
-  - `pickerStyle` — `"dropdown"` or `"list"`
-  - `windowTitle` — banner title on the picker
-  - `successTitle` / `failTitle` — confirmation window titles
-  - `okButton` — confirmation button label
-- **No dependencies** — uses only built-in macOS tools. Requires root to apply the change (Jamf runs as root).
-
-**Dropdown style** (default):
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/settimezone_dropdown.png" width="50%">
-
-**List style** (`pickerStyle="list"`):
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/settimezone_list.png" width="50%">
 
 ## How to Download and Execute Scripts
 

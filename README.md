@@ -37,6 +37,11 @@ Finds expired certificates in the login and System keychains, backs each one up,
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates/images/review.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates/images/details_dark.png" width="30%">
 
+### [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone)
+Lets the user pick their time zone from a searchable list of every zone (search by city, country, "Pacific", "CST" or "UTC-6"), turn automatic time zone on or off, and switch to a 24-hour clock. The clock in the corner previews the time in the zone they pick. It also sets a zone straight from the policy, and supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone/images/search_dark.png" width="49%">
+
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
 <br />
@@ -57,10 +62,6 @@ Recommends users to reboot their devices based on a maximum uptime setting.
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/recommendrebootwindow.png" width="50%">
 
-### [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
-Allows users to select their time zone.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/firstwindow.png" width="50%">
 
 ## Available Scripts
 
@@ -105,6 +106,9 @@ Shows what's filling the disk: free space, a breakdown, the biggest items, and w
 
 ### [Delete Expired Certificates](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates)
 Finds expired certificates in the login and System keychains, backs them up, and removes them after the user reviews them (or silently).
+
+### [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone)
+Lets the user search for and set their time zone, turn automatic time zone on or off, and switch to a 24-hour clock (or set a zone from the policy).
 
 </div>
 

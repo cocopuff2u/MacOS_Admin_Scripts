@@ -688,8 +688,6 @@ var hd=null;
 if(!$.TZPick){ObjC.registerSubclass({name:'TZPick',superclass:'NSObject',methods:{
  'ok:':{types:['void',['id']],implementation:function(s){ if(changed().any) $.NSApplication.sharedApplication.stopModalWithCode(1); }},
  'no:':{types:['void',['id']],implementation:function(s){$.NSApplication.sharedApplication.stopModalWithCode(0);}},
- 'auto:':{types:['void',['id']],implementation:function(s){ AUTOSEL=ObjC.unwrap(swA.state)==1; update(); }},
- 'h24:':{types:['void',['id']],implementation:function(s){ H24SEL=ObjC.unwrap(swH.state)==1; refreshTimes(); update(); }},
  'search:':{types:['void',['id']],implementation:function(s){ layout(); }},
  // ↑ / ↓ in the search field move through the results; Return applies (when something will change)
  'control:textView:doCommandBySelector:':{types:['bool',['id','id','SEL']],implementation:function(c,tv,sel){
@@ -733,6 +731,22 @@ var c3=label("",W-PAD-CKW,ckY+20,CKW,34,28,$.NSFontWeightBold,2); c3.font=$.NSFo
 var c4=label((DRY?"Preview only  ·  ":"")+(CURZ?flag(CURZ.cc)+"  "+CURZ.city+"  ·  "+offStr(CURZ.off):(CUR||"")),W-PAD-CKW,ckY+2,CKW,16,12,$.NSFontWeightSemibold,2); c4.textColor=BTXT; c4.alphaValue=0.85;
 c4.toolTip=(CURZ?CURZ.gen+"  ·  ":"")+U(dday.stringFromDate(NOW))+(AUTO?"  ·  set automatically from your location":""); cv.addSubview(c4);
 
+// A toggle switch drawn in the brand accent colour (the system switch ignores it, and greys out whenever the window
+// isn't the active one). Click anywhere on it; it takes the first click too. TOG[id] = { on, fn(on) }.
+var TOG={};
+if(!$.TZToggle){ ObjC.registerSubclass({name:'TZToggle',superclass:'NSView',methods:{
+ 'acceptsFirstMouse:':{types:['bool',['id']],implementation:function(e){ return true; }},
+ 'resetCursorRects':{implementation:function(){ this.addCursorRectCursor(this.bounds,$.NSCursor.pointingHandCursor); }},
+ 'drawRect:':{implementation:function(r){ var t=TOG[ObjC.unwrap(this.identifier)], b=this.bounds, h=b.size.height, w=b.size.width;
+   var tr=$.NSBezierPath.bezierPathWithRoundedRectXRadiusYRadius(b,h/2,h/2);
+   (t.on?ACCENT:(DARK?C([1,1,1],0.20):C([0,0,0],0.16))).setFill; tr.fill;
+   var k=h-4, kx=t.on?w-k-2:2, kn=$.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(kx,2,k,k));
+   $.NSColor.whiteColor.setFill; kn.fill; C([0,0,0],0.12).setStroke; kn.lineWidth=0.5; kn.stroke; }},
+ 'mouseUp:':{types:['void',['id']],implementation:function(e){ }},
+ 'mouseDown:':{types:['void',['id']],implementation:function(e){ var t=TOG[ObjC.unwrap(this.identifier)]; t.on=!t.on; this.needsDisplay=true; t.fn(t.on); }}}}); }
+function toggle(x,y,id,on,fn){ var v=$.TZToggle.alloc.initWithFrame($.NSMakeRect(x,y,42,24)); v.identifier=id; TOG[id]={on:on,fn:fn,view:v}; cv.addSubview(v); return TOG[id]; }
+function setToggle(t,on){ t.on=on; t.view.needsDisplay=true; }
+
 // Two switches, like System Settings: automatic time zone, and 24-hour time
 function option(x,w,symName,title,sub,act,on,warn){
  card(x,opY,w,OPH);
@@ -741,12 +755,11 @@ function option(x,w,symName,title,sub,act,on,warn){
  var t=label(title,x+54,opY+OPH/2+1,w-54-70,18,13,$.NSFontWeightSemibold); cv.addSubview(t);
  var d=label(sub,x+54,opY+OPH/2-16,w-54-70,15,11); d.cell.lineBreakMode=4; d.toolTip=sub;
  d.textColor = warn ? (DARK?C([1,0.62,0.04]):C([0.75,0.38,0.0])) : $.NSColor.secondaryLabelColor; cv.addSubview(d);
- var sw; try{ sw=$.NSSwitch.alloc.initWithFrame($.NSMakeRect(x+w-12-42,opY+(OPH-24)/2,42,24)); }catch(e){ sw=null; }
- if(!sw || sw.isNil()){ sw=$.NSButton.alloc.initWithFrame($.NSMakeRect(x+w-12-24,opY+(OPH-20)/2,22,20)); sw.setButtonType(3); sw.title=""; }
- sw.state=on?1:0; sw.target=hd; sw.action=act; try{ sw.contentTintColor=ACCENT; }catch(e){} cv.addSubview(sw); return sw; }
+ return toggle(x+w-14-42,opY+(OPH-24)/2,act,on,
+  act=="auto" ? function(v){ AUTOSEL=v; update(); } : function(v){ H24SEL=v; refreshTimes(); update(); }); }
 var OW=(W-2*PAD-12)/2;
-var swA=option(PAD,OW,"location.fill","Set time zone automatically",AUTOWHY||"Uses your Mac's location",'auto:',AUTO,!!AUTOWHY);
-var swH=option(PAD+OW+12,OW,"clock.arrow.2.circlepath","24-hour time",H24NOW?"Shows 14:30 instead of 2:30 PM":"Shows 2:30 PM — turn on for 14:30",'h24:',H24NOW,false);
+var swA=option(PAD,OW,"location.fill","Set time zone automatically",AUTOWHY||"Uses your Mac's location","auto",AUTO,!!AUTOWHY);
+var swH=option(PAD+OW+12,OW,"clock.arrow.2.circlepath","24-hour time","Shows 14:30 instead of 2:30 PM","h24",H24NOW,false);
 
 // Search
 var search=$.TZSearch.alloc.initWithFrame($.NSMakeRect(PAD,tbY,380,TBH)); search.placeholderString="Search a city, country, or zone (e.g. Pacific, EST)";
