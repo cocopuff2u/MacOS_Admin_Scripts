@@ -2,7 +2,7 @@
 
 ####################################################################################################
 #
-# Self Service App Uninstaller
+# App Uninstaller
 #
 # Purpose: Fully uninstalls one or more Mac apps AND the leftover files they scatter around the
 #          system — preferences, caches, containers, login items, support files and installer
@@ -72,10 +72,10 @@
 # ---------------------------------------------------------------------------------------------
 #
 # TESTING (nothing is removed with "dry"):
-#   ./Self_Service_App_Uninstaller.sh "" dry                   # pick apps, review — preview only
-#   ./Self_Service_App_Uninstaller.sh "Slack, Spotify" dry     # straight to the review
-#   sudo ./Self_Service_App_Uninstaller.sh                     # the real thing, as Jamf runs it
-#   ./Self_Service_App_Uninstaller.sh "" dry "sf:trash.fill" "#1F6FEB" "Acme IT Support" dark
+#   ./App_Uninstaller.sh "" dry                   # pick apps, review — preview only
+#   ./App_Uninstaller.sh "Slack, Spotify" dry     # straight to the review
+#   sudo ./App_Uninstaller.sh                     # the real thing, as Jamf runs it
+#   ./App_Uninstaller.sh "" dry "sf:trash.fill" "#1F6FEB" "Acme IT Support" dark
 #
 # Exit codes (Jamf treats any non-zero exit as a FAILED policy):
 #   0 - removed, dry run, user cancelled, or nothing to do
@@ -1358,7 +1358,7 @@ EOF
   run_as_user /usr/bin/osascript -l JavaScript "$mscpt" >/dev/null 2>&1
 }
 
-# UN_LIB=1 source Self_Service_App_Uninstaller.sh  -> loads the functions without running anything (testing).
+# UN_LIB=1 source App_Uninstaller.sh  -> loads the functions without running anything (testing).
 [[ -n "$UN_LIB" ]] && return 0
 
 ####################################################################################################

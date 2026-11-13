@@ -1,4 +1,4 @@
-# Self Service App Uninstaller
+# App Uninstaller
 
 Completely removes one or more Mac apps **and** the leftover files they scatter around the system: preferences, caches, containers, login items, support files and installer receipts, the way the "AppCleaner" utility does. Dragging an app to the Trash leaves those files behind, often gigabytes of them. This finds everything tied to each app and removes it in one step.
 
@@ -27,23 +27,23 @@ Shown with the sample logo ([`images/sample_logo.png`](images/sample_logo.png), 
 
 **Pick apps**: check one or more. Search, and sort by name, size or last opened. (Skipped when the policy names the apps.)
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/picker_dark.png" width="49%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/picker_dark.png" width="49%">
 
 **Finding each app's files**:
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/scanning.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/scanning_dark.png" width="49%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/scanning.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/scanning_dark.png" width="49%">
 
 **Review and remove**: uncheck anything to keep. The total updates as you go.
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/review.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/review_dark.png" width="49%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/review.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/review_dark.png" width="49%">
 
 **Done**:
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/done.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/done_dark.png" width="49%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/done.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/done_dark.png" width="49%">
 
 ## Available Scripts
 
-### 1. [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/Self_Service_App_Uninstaller.sh)
+### 1. [App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/App_Uninstaller.sh)
 - **Description**: Fully uninstalls one or more Mac apps and their leftover files. Deploy it as a Self Service policy: the user picks the apps, reviews a checklist and confirms before anything is removed.
 
 ## Jamf Setup
@@ -152,10 +152,10 @@ All settings are at the top of the script.
 Nothing is removed with `dry`:
 
 ```bash
-./Self_Service_App_Uninstaller.sh "" dry                   # pick apps, review: preview only
-./Self_Service_App_Uninstaller.sh "Slack, Spotify" dry     # straight to the review
-./Self_Service_App_Uninstaller.sh "" dry "sf:trash.fill" "#1F6FEB" "Acme IT" dark
-sudo ./Self_Service_App_Uninstaller.sh                     # the real thing, as Jamf runs it
+./App_Uninstaller.sh "" dry                   # pick apps, review: preview only
+./App_Uninstaller.sh "Slack, Spotify" dry     # straight to the review
+./App_Uninstaller.sh "" dry "sf:trash.fill" "#1F6FEB" "Acme IT" dark
+sudo ./App_Uninstaller.sh                     # the real thing, as Jamf runs it
 ```
 
 ## Notes

@@ -12,10 +12,10 @@ Sharing tools and scripts is essential in the Mac admin community. Many of these
   
 ## Featured Scripts
 
-### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
+### [App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller)
 Completely uninstalls apps and all the leftover files they leave behind. The user picks one or more apps (search, sort by size or last opened), reviews every file that will be removed with its size, and confirms. Nothing is deleted without their OK, and their files go to the Trash.
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/review_dark.png" width="49%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller/images/review_dark.png" width="49%">
 
 ### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
 Shows the user and IT what's filling up the Mac's disk. It measures the whole disk in one pass with live progress, then shows how full the disk is, what's using the space (home folder, apps, other users, macOS and system), the biggest items (click one to show it in Finder), and ways to free up space. It saves a full report for the ticket, and supports your logo and colors in light and dark mode.
@@ -31,6 +31,11 @@ Tests the Mac's network and shows a 0–100 Network Score, plain-English verdict
 Gathers logs from across the Mac, including Jamf, App Auto-Patch, Installomator and sandboxed app logs, plus device, security and network details and install history. It zips them up and drops the archive on the user's Desktop, ready to attach to a support ticket. It supports your logo and colors (including your Jamf Self Service branding) in light and dark mode.
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/result_dark.png" width="49%">
+
+### [Delete Expired Certificates](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates)
+Finds expired certificates in the login and System keychains, backs each one up, and removes it. The user sees each certificate with its Keychain icon, issuer and expiry, can click one for plain-English details, and sees a **Renewed** badge when a newer copy is already installed. It also runs silently at check-in, and supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates/images/review.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates/images/details_dark.png" width="30%">
 
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
@@ -56,12 +61,6 @@ Recommends users to reboot their devices based on a maximum uptime setting.
 Allows users to select their time zone.
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/firstwindow.png" width="50%">
-
-### [Delete Expired Certificates](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
-Finds expired certificates in the login and System keychains, backs them up, and removes them. Runs as a Self Service item (the user reviews a checklist and confirms) or fully headless with no prompt.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_checklist.png" width="50%">
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
 
 ## Available Scripts
 
@@ -92,7 +91,7 @@ Scripts designed to help admins manage and communicate password requirements.
 ### [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
 Scripts that provide tools and prompts for user and admin tasks.
 
-### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
+### [App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/App_Uninstaller)
 Completely uninstalls one or more apps and all their leftover files. The user picks the apps, then reviews a checklist with sizes before anything is removed.
 
 ### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
@@ -103,6 +102,9 @@ Tests the Mac's connection and shows a 0–100 score, what it's ready for, plain
 
 ### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
 Shows what's filling the disk: free space, a breakdown, the biggest items, and ways to free up space.
+
+### [Delete Expired Certificates](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Expired_Certificates)
+Finds expired certificates in the login and System keychains, backs them up, and removes them after the user reviews them (or silently).
 
 </div>
 
