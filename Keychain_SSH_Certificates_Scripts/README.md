@@ -9,13 +9,13 @@ These scripts are designed to simplify and automate various tasks related to key
 
 ## Available Scripts
 
+> **Reset User Keychain** has moved to its own folder: [`/Reset_User_Keychain`](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain).
+
 ### 1. [Import DoD Certs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts/Import_DoD_Certs.sh)
 - **Description**: Imports Department of Defense (DoD) certificates into the system keychain. This script is essential for ensuring that the necessary certificates are correctly installed for secure communications and compliance with DoD requirements.
 
 **Note**: The script will prompt the user for the local system password multiple times to authorize the import process.
 
-### 1. [Reset Keychain](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts/Reset_User_Keychain.sh)
-- **Description**: Resets local users keychain with prompts
 
 ## How to Download and Execute Scripts
 

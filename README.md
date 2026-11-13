@@ -42,6 +42,11 @@ Lets the user pick their time zone from a searchable list of every zone (search 
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone/images/search_dark.png" width="49%">
 
+### [Reset User Keychain](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain)
+Gives the user a fresh login keychain to stop the "login keychain" password prompts that follow a password change. It explains what will happen in plain words, backs the old keychain up instead of deleting it, and offers Restart Now at the end. Local Items can be reset too. It supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain/images/confirm.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain/images/done_dark.png" width="49%">
+
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
 <br />
@@ -109,6 +114,9 @@ Finds expired certificates in the login and System keychains, backs them up, and
 
 ### [Set Time Zone](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Set_Time_Zone)
 Lets the user search for and set their time zone, turn automatic time zone on or off, and switch to a 24-hour clock (or set a zone from the policy).
+
+### [Reset User Keychain](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Reset_User_Keychain)
+Gives the user a fresh login keychain to fix password prompts after a password change. The old keychain is backed up, not deleted.
 
 </div>
 
