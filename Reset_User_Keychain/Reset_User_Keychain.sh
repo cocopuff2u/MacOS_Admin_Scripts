@@ -4,7 +4,68 @@
 #
 # Reset User Keychain
 #
-# Purpose: Reset Users keychain
+# Purpose: Gives the logged-in user a fresh login keychain. Fixes the "macOS wants to use the login keychain"
+#          / "the system was unable to unlock your login keychain" prompts that keep coming back after a
+#          password change (the old keychain still uses the old password), and, optionally, the repeated
+#          "Local Items" keychain prompts.
+#
+#          Nothing is deleted: the current keychain files are MOVED to a dated backup folder in the user's
+#          Library, so they can be put back. On the next login (after a restart) macOS makes a new login
+#          keychain with the user's current password.
+#
+# Note: Fully native — no swiftDialog or JamfHelper. The GUI is built with osascript (JXA) + AppKit and
+#       shown in the console user's session, so it works when run as root from Jamf.
+#
+# What the user sees:
+#   1. Reset    — what will happen, in plain words, and a switch to also reset Local Items. Reset or Cancel.
+#   2. Done     — where the backup is (click to show it in Finder), and Restart Now or Later.
+#
+# ---------------------------------------------------------------------------------------------
+# HOW TO DEPLOY:
+#
+#   Self Service (the user confirms):         leave Parameter 4 blank (or "verbose").
+#   Test a policy safely:                     Parameter 4 = dry     (nothing is changed)
+#   Help desk, no windows (user is told):     Parameter 4 = silent  (resets; the user should restart)
+#
+# JAMF SCRIPT PARAMETERS — on the script's "Options" tab in Jamf Pro, type these labels:
+#
+#   Parameter 4 Label:  Action Mode (verbose, dry, or silent)
+#   Parameter 5 Label:  Also reset Local Items (yes or no)
+#   Parameter 6 Label:  Brand Icon (path, .app, URL, base64, sf:symbol, or selfservice — optional)
+#   Parameter 7 Label:  Banner Color (hex, optional)
+#   Parameter 8 Label:  Brand Name (optional)
+#   Parameter 9 Label:  Appearance (auto, light, or dark)
+#
+#   When you add this script to a policy, fill the parameters like this:
+#     $4  Action Mode     verbose = the window; the user confirms (default)
+#                         dry     = the same windows, but nothing is changed (to test a policy)
+#                         silent  = no windows: resets right away (the user still needs to restart)
+#     $5  Local Items     yes = also reset the Local Items keychain (fixes "Local Items" prompts);
+#                         no / blank = RESET_LOCAL_ITEMS below. In the window it's the starting position
+#                         of the switch, which the user can change.
+#     $6  Brand Icon      logo for the windows. Blank = BRAND_ICON from the Config block.
+#                         examples: /Library/Application Support/Acme/logo.png
+#                                   /Applications/Self Service.app
+#                                   https://acme.com/logo.png
+#                                   sf:key.fill
+#                                   selfservice   (your Jamf Self Service branding logo)
+#     $7  Banner Color    hex colour for the banner, e.g. #1F2937, "auto" (exact logo colour), or
+#                         "auto-dark" (deeper logo shade for white text). Blank = bannerColor below.
+#     $8  Brand Name      small line above the banner title, e.g. "Acme IT Support".
+#     $9  Appearance      auto (follow the user's Light/Dark setting), light, or dark.
+# ---------------------------------------------------------------------------------------------
+#
+# TESTING (nothing is changed with "dry"):
+#   ./Reset_User_Keychain.sh dry                        # the windows, preview only
+#   ./Reset_User_Keychain.sh dry yes "sf:key.fill" "#1F6FEB" "Acme IT" dark
+#   sudo ./Reset_User_Keychain.sh                       # the real thing, as Jamf runs it
+#
+# To put a backup back: log out (or restart and don't log in as that user), then move the files from
+#   ~/Library/Keychains Backup/<date>/  back into  ~/Library/Keychains/  (replacing the new ones).
+#
+# Exit codes (Jamf treats any non-zero exit as a FAILED policy):
+#   0 - reset, dry run, user cancelled, or nothing to reset
+#   1 - no logged-in user, or the keychain couldn't be backed up and reset
 #
 # https://github.com/cocopuff2u
 #
