@@ -10,54 +10,27 @@ Sharing tools and scripts is essential in the Mac admin community. Many of these
 
 <div align="center">
   
-## Available Scripts
-
-### [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts)
-A comprehensive collection of scripts for installing various applications.
-
-### [Application Specific Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Specific_Scripts)
-Scripts tailored for customizing or configuring specific applications.
-
-### [Application Uninstall Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Uninstaller_Scripts)
-A set of scripts designed for uninstalling different applications.
-
-### [Delete/Disable Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Disable_Scripts)
-Scripts for disabling or uninstalling software and services.
-
-### [Jamf Only Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts)
-Scripts specifically crafted for deployment via Jamf Pro.
-
-### [Keychain, SSH, and Certificate Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts)
-Scripts focused on managing keychain, SSH, and certificates.
-
-### [MacOS Update/Upgrade Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts)
-Scripts to assist with updating or upgrading macOS.
-
-### [Password Management Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts)
-Scripts designed to help admins manage and communicate password requirements.
-
-### [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
-Scripts that provide tools and prompts for user and admin tasks.
-
-### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
-A GUI tool that completely uninstalls an app and all its leftover files, with a user-reviewed checklist.
-
-### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
-Collects logs and system details into a branded zip on the user's Desktop, ready for a support ticket.
-
-### [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check)
-Tests the Mac's connection and shows a 0–100 score, what it's ready for, plain-English findings, and IT details.
-
-### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
-Shows what's filling the disk: free space, a breakdown, the biggest items, and ways to free up space.
-
 ## Featured Scripts
 
 ### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
-Completely uninstalls an app and all the leftover files it leaves behind. The user picks an app, reviews exactly what will be removed, and confirms — nothing is deleted without their OK.
+Completely uninstalls apps and all the leftover files they leave behind. The user picks one or more apps (search, sort by size or last opened), reviews every file that will be removed with its size, and confirms. Nothing is deleted without their OK, and their files go to the Trash.
 <br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/firstwindow.png" width="50%">
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/secondwindow.png" width="50%">
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/picker.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller/images/review_dark.png" width="49%">
+
+### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
+Shows the user and IT what's filling up the Mac's disk. It measures the whole disk in one pass with live progress, then shows how full the disk is, what's using the space (home folder, apps, other users, macOS and system), the biggest items (click one to show it in Finder), and ways to free up space. It saves a full report for the ticket, and supports your logo and colors in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/result_dark.png" width="49%">
+
+### [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check)
+Tests the Mac's network and shows a 0–100 Network Score, plain-English verdicts for video and voice calls, screen sharing, streaming and big uploads, and findings that say what's wrong. Below that is a For IT section covering Wi-Fi, DNS, VPN, MDM and more. It separates "your Wi-Fi or router" from "your internet provider", supports your logo and colors in light and dark mode, and saves a report for the ticket.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check/images/result_dark.png" width="49%">
+
+### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
+Gathers logs from across the Mac, including Jamf, App Auto-Patch, Installomator and sandboxed app logs, plus device, security and network details and install history. It zips them up and drops the archive on the user's Desktop, ready to attach to a support ticket. It supports your logo and colors (including your Jamf Self Service branding) in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/result_dark.png" width="49%">
 
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
@@ -90,20 +63,46 @@ Finds expired certificates in the login and System keychains, backs them up, and
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_checklist.png" width="50%">
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts/images/deleteexpiredcerts_result.png" width="50%">
 
-### [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check)
-Tests the Mac's network and shows a 0–100 Network Score, plain-English verdicts for video and voice calls, screen sharing, streaming and big uploads, and findings that say what's wrong. Below that is a For IT section covering Wi-Fi, DNS, VPN, MDM and more. It separates "your Wi-Fi or router" from "your internet provider", supports your logo and colors in light and dark mode, and saves a report for the ticket.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check/images/result_dark.png" width="49%">
+## Available Scripts
+
+### [Application Installers Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_installer_Scripts)
+A comprehensive collection of scripts for installing various applications.
+
+### [Application Specific Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Specific_Scripts)
+Scripts tailored for customizing or configuring specific applications.
+
+### [Application Uninstall Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Application_Uninstaller_Scripts)
+A set of scripts designed for uninstalling different applications.
+
+### [Delete/Disable Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Delete_Disable_Scripts)
+Scripts for disabling or uninstalling software and services.
+
+### [Jamf Only Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Jamf_Only_Scripts)
+Scripts specifically crafted for deployment via Jamf Pro.
+
+### [Keychain, SSH, and Certificate Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Keychain_SSH_Certificates_Scripts)
+Scripts focused on managing keychain, SSH, and certificates.
+
+### [MacOS Update/Upgrade Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/MacOS_Update_Upgrade_Scripts)
+Scripts to assist with updating or upgrading macOS.
+
+### [Password Management Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts)
+Scripts designed to help admins manage and communicate password requirements.
+
+### [User Tool Scripts](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/User_Tools_Scripts)
+Scripts that provide tools and prompts for user and admin tasks.
+
+### [Self Service App Uninstaller](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Self_Service_App_Uninstaller)
+Completely uninstalls one or more apps and all their leftover files. The user picks the apps, then reviews a checklist with sizes before anything is removed.
 
 ### [Collect User Logs](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs)
-Gathers logs from across the Mac, including Jamf, App Auto-Patch, Installomator and sandboxed app logs, plus device, security and network details and install history. It zips them up and drops the archive on the user's Desktop, ready to attach to a support ticket. It supports your logo and colors (including your Jamf Self Service branding) in light and dark mode.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Collect_User_Logs/images/result_dark.png" width="49%">
+Collects logs and system details into a branded zip on the user's Desktop, ready for a support ticket.
+
+### [Network Health Check](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Network_Health_Check)
+Tests the Mac's connection and shows a 0–100 score, what it's ready for, plain-English findings, and IT details.
 
 ### [Disk Usage](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage)
-Shows the user and IT what's filling up the Mac's disk. It measures the whole disk in one pass with live progress, then shows how full the disk is, what's using the space (home folder, apps, other users, macOS and system), the biggest items (click one to show it in Finder), and ways to free up space. It saves a full report for the ticket, and supports your logo and colors in light and dark mode.
-<br />
-<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/progress.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Disk_Usage/images/result_dark.png" width="49%">
+Shows what's filling the disk: free space, a breakdown, the biggest items, and ways to free up space.
 
 </div>
 
