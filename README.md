@@ -52,6 +52,11 @@ Reminds the user to restart once their Mac has been up too long. It shows the up
 <br />
 <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot/images/reminder.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot/images/countdown_dark.png" width="42%">
 
+### [Installomator Progress](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Installomator_Progress)
+Installs or updates apps with Installomator and shows a native progress window, with no swiftDialog. One script replaces "00 - Prepare SwiftDialog" → Installomator → "ZZ - Quit SwiftDialog". Like App Auto-Patch, it keeps its own local copy of Installomator (main branch, latest signed release, or a pinned version). Four window styles, and it supports your icons and bar color in light and dark mode.
+<br />
+<img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Installomator_Progress/images/mini.png" width="49%"> <img src="https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Installomator_Progress/images/card_dark.png" width="33%">
+
 ### [Password Expiring Warning](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Password_Scripts/Password_Expiring_Warning)
 Warns users when their password is nearing expiration.
 <br />
@@ -120,6 +125,9 @@ Gives the user a fresh login keychain to fix password prompts after a password c
 
 ### [Recommend User Reboot](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Recommend_User_Reboot)
 Reminds the user to restart once their Mac has been up too long, with a countdown to save their work (and it skips meetings).
+
+### [Installomator Progress](https://github.com/cocopuff2u/MacOS_Admin_Scripts/blob/main/Installomator_Progress)
+Installs or updates apps with a local copy of Installomator and shows a native progress window. No swiftDialog needed.
 
 </div>
 
