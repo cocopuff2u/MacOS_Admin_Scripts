@@ -79,6 +79,13 @@
 #                in four styles (mini, toast, card, hud) with a smooth dimmed + sweep progress bar, your
 #                icons and bar color, light and dark mode, and a clean log with a result per app.
 #                - @cocopuff2u
+# 1.1 11/16/26 - The status follows every step after the download instead of sitting on "Downloading...":
+#                Preparing… → Waiting for <app> to quit… (when the app is open) → Installing/Updating... →
+#                Verifying... The bar is now animated by Core Animation (drawn by macOS at full frame rate),
+#                so it's just as smooth from Self Service, where the script runs at background priority.
+#                The window opts out of App Nap and only reads new lines from the command file.
+#                When an open app has to quit first, the install continues ~2s after it has quit instead of
+#                after Installomator's fixed 30-second wait (still waits up to 30s for a slow app). - @cocopuff2u
 #
 ####################################################################################################
 
@@ -128,7 +135,7 @@ emulate -L zsh
 setopt no_nomatch null_glob extended_glob
 autoload -Uz is-at-least
 
-SCRIPT_VERSION="1.0"
+SCRIPT_VERSION="1.1"
 INSTALLOMATOR="$INSTALLOMATOR_DIR/Installomator.sh"
 SOURCE_FILE="$INSTALLOMATOR_DIR/.source"   # remembers which version is installed: "release 10.10" or "main"
 
@@ -262,7 +269,7 @@ else overlayFile=$(resolve_icon "$overlayicon" overlay "Overlay icon: " "showing
 #   message: <text>   icon: <path>   overlayicon: <path>   quit:
 write_ui() {
   cat > "$UI_SCRIPT" <<'JXA'
-ObjC.import('Cocoa');
+ObjC.import('Cocoa'); ObjC.import('QuartzCore');
 function isOk(o){ return !!o && !(typeof o.isNil==='function' && o.isNil()); }
 function loadImg(p){
  if(!p) return null; var i=null, isDir=Ref();
@@ -273,6 +280,10 @@ function loadImg(p){
 function run(argv){
  var CMD=argv[0], MSG=argv[1], ICON=argv[2], OVL=argv[3], POS=(argv[4]||'').toLowerCase(), SHOWVER=(argv[5]=='true'), BARCOL=(argv[6]||'accent'), STYLE=(argv[7]||'mini');
  var app=$.NSApplication.sharedApplication; app.setActivationPolicy(1);   // no Dock icon
+ // Opt out of App Nap and timer coalescing. Launched from Self Service / Jamf, the window is a background
+ // process, and macOS would otherwise slow its timers down — the bar would animate slowly and in steps.
+ // NSActivityUserInitiated (0x00FFFFFF) + NSActivityLatencyCritical (0xFF00000000); added, not OR'd — JS bit ops are 32-bit.
+ var activity=$.NSProcessInfo.processInfo.beginActivityWithOptionsReason(0x00FFFFFF+0xFF00000000,'Showing install progress');
  // ---- Window style (WINDOW_STYLE / $10) -----------------------------------------------------------
  //   mini   540×128  icon + overlay on the left; message, bar, status, % on the right (default: bottom right)
  //   toast  380×72   small icon; message + status; thin bar along the bottom edge    (default: top right)
@@ -323,11 +334,10 @@ function run(argv){
  // a percentage the fill dims and a bright segment sweeps over it. Nothing changes shape between steps —
  // the dimming and the sweep just fade in and out — so every step change is smooth.
  var TX=S.bar[0], BY=S.bar[1], TW=S.bar[2], BH=S.bar[3], BR=S.bar[4]?0:BH/2;   // BR: square ends for the toast's edge bar
- function box(parent,x,y,w,color){ var b=$.NSBox.alloc.initWithFrame($.NSMakeRect(x,y,w,BH)); b.boxType=4; b.borderWidth=0;
-  b.titlePosition=0; b.cornerRadius=BR; b.fillColor=color; parent.addSubview(b); return b; }
- box(cv,TX,BY,TW,$.NSColor.quaternaryLabelColor);                                   // track
- var clip=$.NSView.alloc.initWithFrame($.NSMakeRect(TX,BY,TW,BH)); clip.wantsLayer=true;   // keeps the
- clip.layer.cornerRadius=BR; clip.layer.masksToBounds=true; cv.addSubview(clip);         // sweep inside
+ var track=$.NSBox.alloc.initWithFrame($.NSMakeRect(TX,BY,TW,BH)); track.boxType=4; track.borderWidth=0;
+ track.titlePosition=0; track.cornerRadius=BR; track.fillColor=$.NSColor.quaternaryLabelColor; cv.addSubview(track);
+ var clip=$.NSView.alloc.initWithFrame($.NSMakeRect(TX,BY,TW,BH)); clip.wantsLayer=true;   // keeps the fill and
+ clip.layer.cornerRadius=BR; clip.layer.masksToBounds=true; cv.addSubview(clip);         // sweep inside the track
  // Bar colour: the accent colour (macOS adapts it to light/dark itself), or BAR_COLOR — "RRGGBB" for both
  // modes or "RRGGBB/RRGGBB" for light/dark. The track, text and background are system colours, so the
  // window follows light/dark mode, and the bar colour is re-picked if the user switches mid-install.
@@ -336,79 +346,91 @@ function run(argv){
   return ObjC.unwrap(n)=='NSAppearanceNameDarkAqua'; }
  var barMode=null;
  function barColor(){ if(BARCOL=='accent') return $.NSColor.controlAccentColor; var c=BARCOL.split('/'); return hexColor(isDark()?c[1]:c[0]); }
- var fill=box(clip,0,0,BH,barColor()), seg=box(clip,0,0,BH,barColor());
- function refreshBarColor(){ var m=isDark(); if(m!==barMode){ barMode=m; var c=barColor(); fill.fillColor=c; seg.fillColor=c; } }
+ // The fill and the sweep are Core Animation layers, and every movement is a Core Animation animation.
+ // Those are drawn by macOS itself at the display's full frame rate, not by this script — so the bar stays
+ // smooth even when the script runs at background priority (Self Service / Jamf policies), where its own
+ // timers only fire ~12 times a second.
+ //   fill   a pill whose rounded left end is tucked behind the track's left edge, so even a 1% fill is a
+ //          clean sliver. Each new % glides there (ease-out, 0.6s) from wherever the fill is right now.
+ //   sweep  a segment 30% of the bar wide crosses with an ease-in-out, pausing out of sight at each end.
+ //   busy   the fill dims to 38% and the sweep fades in (0.4s); back again when a % arrives.
+ var fill=$.CALayer.layer, seg=$.CALayer.layer, SW=TW*0.30, SWEEP=1.8;
+ fill.anchorPoint=$.NSMakePoint(0,0.5); fill.bounds=$.NSMakeRect(0,0,BH,BH); fill.position=$.NSMakePoint(-BH,BH/2);
+ seg.bounds=$.NSMakeRect(0,0,SW,BH); seg.position=$.NSMakePoint(-SW/2,BH/2);
+ [fill,seg].forEach(function(l){ l.cornerRadius=BR; clip.layer.addSublayer(l); });
+ function refreshBarColor(){ var m=isDark(); if(m!==barMode){ barMode=m;
+  try{ $.NSAppearance.currentAppearance=win.effectiveAppearance; }catch(e){}   // so the accent colour resolves for this mode
+  var c=barColor().CGColor; noAnim(function(){ fill.backgroundColor=c; seg.backgroundColor=c; }); } }
+ var EASE_OUT=$.CAMediaTimingFunction.functionWithControlPoints(0.2,0.6,0.35,1),
+     EASE_IO=$.CAMediaTimingFunction.functionWithControlPoints(0.37,0,0.63,1);   // ≈ sine ease-in-out
+ function noAnim(f){ $.CATransaction.begin; $.CATransaction.setDisableActions(true); f(); $.CATransaction.commit; }
+ function now(l,key){ var p=l.presentationLayer; return Number(ObjC.unwrap((isOk(p)?p:l).valueForKeyPath(key))); }   // what's on screen
+ // animTo: move a layer property to a new value, starting from wherever it is on screen right now
+ function animTo(l,key,to,dur,tf){
+  var from=now(l,key); noAnim(function(){ l.setValueForKeyPath(to,key); });
+  if(Math.abs(from-to)<0.001){ l.removeAnimationForKey(key); return; }
+  var a=$.CABasicAnimation.animationWithKeyPath(key); a.fromValue=from; a.toValue=to; a.duration=dur; a.timingFunction=tf;
+  l.addAnimationForKey(a,key); }
+ function startSweep(){   // (re)starts the sweep from the left
+  var a=$.CABasicAnimation.animationWithKeyPath('position.x'); a.fromValue=-SW/2; a.toValue=TW+SW/2;
+  a.duration=SWEEP; a.timingFunction=EASE_IO; a.repeatCount=1e9; seg.addAnimationForKey(a,'sweep'); }
  var pt=lbl(S.st, S.st[4], $.NSFontWeightRegular, $.NSColor.secondaryLabelColor, 1); pt.stringValue='Starting…';
  var pctL = S.pct ? lbl(S.pct, S.st[4], $.NSFontWeightSemibold, $.NSColor.secondaryLabelColor, 1, 2) : null, pctShown='';   // mini, card, hud: "42%" (same size as the status text)
 
- // Animation is time-based (60fps timer, every step uses the real time since the last frame):
- //   percentage   the fill moves to each new value on a critically-damped spring (starts gently, settles
- //                without overshoot) with a speed cap, so even a big jump takes ~0.8s and never snaps
- //   busy         busyAmt eases 0 → 1 (~0.4s): the fill dims to 38% and the sweep fades in; and back
- //   sweep        a segment crosses with a sine ease-in-out, pausing out of sight at each end
- //   tiny widths  fade in/out instead of popping (a pill can't be narrower than it is tall)
- //   idle         the 60fps timer pauses while nothing moves (CPU near zero), poll() wakes it
- var value=0, shown=0, vel=0, indeterminate=true, busyAmt=1, dimAmt=1, blendAt=-1;
- var now0=Date.now()/1000, last=now0, t0=now0, SWEEP=1.8, SEG=0.30, SPRING=7, VMAX=150, applied='';
- function ease(x){ return (1-Math.cos(Math.PI*x))/2; }                       // sine ease-in-out
- // put(view, left, right, alpha, fromLeft) -> a key describing what was drawn (so unchanged frames can be skipped).
- // A pill can't be narrower than it is tall. The fill (fromLeft) instead slides out from behind the track's
- // rounded left end at full colour — the rounded clip shows just the sliver. The sweep fades in/out instead.
- function put(v,L,R,alpha,fromLeft){
-  var w=R-L; if(w<0.5 || alpha<0.005){ v.hidden=true; return 'h'; }
-  var dw=Math.max(BH,w), dl=fromLeft ? w-dw : L-(dw-w)/2;
-  var a=Math.max(0,Math.min(1, fromLeft ? alpha : alpha*Math.min(1,w/BH)));
-  v.hidden=false; v.alphaValue=a; v.frame=$.NSMakeRect(dl,0,dw,BH);
-  return dl.toFixed(1)+','+dw.toFixed(1)+','+a.toFixed(3); }
- function draw(){
-  var now=Date.now()/1000, dt=Math.min(0.05, now-last); last=now;
-  if(!indeterminate){   // critically damped spring toward value (% per second, capped)
-   vel += (SPRING*SPRING*(value-shown) - 2*SPRING*vel)*dt; vel=Math.max(-VMAX,Math.min(VMAX,vel));
-   shown += vel*dt; if(Math.abs(value-shown)<0.05 && Math.abs(vel)<1){ shown=value; vel=0; } }
-  var goal=indeterminate?1:0, k=1-Math.exp(-dt*8);
-  busyAmt += (goal-busyAmt)*k; if(Math.abs(goal-busyAmt)<0.002) busyAmt=goal;   // sweep fade
-  dimAmt  += (goal-dimAmt)*k;  if(Math.abs(goal-dimAmt)<0.002)  dimAmt=goal;    // fill dimming fade
-  var p=((now-t0)%SWEEP)/SWEEP, sw=TW*SEG, sx=-sw+ease(p)*(TW+sw);
-  var key=put(fill,0,TW*shown/100,1-0.62*dimAmt,true)+'|'+put(seg,Math.max(0,sx),Math.min(TW,sx+sw),busyAmt);
+ // State from the command file; render() hands the changes to Core Animation.
+ var value=0, indeterminate=true, tW=null, tFO=null, tSO=null;
+ function fillPct(){ return Math.max(0,(now(fill,'bounds.size.width')-BH)/TW*100); }   // % the fill shows right now
+ function render(){
+  var w=TW*value/100, fo=indeterminate?0.38:1, so=indeterminate?1:0;
+  if(w!==tW){ tW=w; animTo(fill,'bounds.size.width',BH+w,0.6,EASE_OUT); }
+  if(fo!==tFO){ tFO=fo;
+   // A fill that was already showing while busy (e.g. the full bar after a download) fades back from dimmed;
+   // new fill (a download starting from empty) is full colour straight away, so it never flickers dim.
+   if(!indeterminate && fillPct()<1){ noAnim(function(){ fill.opacity=fo; }); fill.removeAnimationForKey('opacity'); }
+   else animTo(fill,'opacity',fo,0.4,EASE_IO); }
+  if(so!==tSO){ tSO=so; animTo(seg,'opacity',so,0.4,EASE_IO); }
   // % only while there's real progress to report (1–99): not on Done / up to date (100), busy steps or a failure (0)
-  if(pctL){ var pc = (!indeterminate && value>0 && value<100) ? Math.min(99,Math.round(shown))+'%' : ''; if(pc!==pctShown){ pctShown=pc; pctL.stringValue=pc; } key+='|'+pc; }
-  if(key===applied){   // nothing moved: if nothing will, pause the 60fps timer until poll() wakes it
-   if(!indeterminate && busyAmt===0 && dimAmt===0 && shown===value && animTimer && !sleeping){ sleeping=true; animTimer.fireDate=$.NSDate.distantFuture; }
-   return; }
-  applied=key; }
- function startBusy(){ if(!indeterminate){ t0=Date.now()/1000; indeterminate=true; } }   // sweep enters from the left
+  if(pctL){ var pc=(!indeterminate && value>0 && value<100) ? Math.min(99,Math.max(1,Math.round(value)))+'%' : '';
+   if(pc!==pctShown){ pctShown=pc; pctL.stringValue=pc; } } }
+ function startBusy(){ if(!indeterminate){ indeterminate=true; startSweep(); } }   // sweep enters from the left
  function setProgress(v){
   v=String(v).trim().toLowerCase();
   if(v=='indeterminate'){ startBusy(); return; }
   var n = v=='complete'?100 : v=='reset'?0 : v=='increment'?value+1 : parseFloat(v);
   if(isNaN(n)) return;
-  // The fill keeps its real progress; the sweep fades out. Only a fill that was already showing while busy
-  // (e.g. the full bar after a download) fades back from dimmed — new fill (a download starting from empty)
-  // is full colour straight away, so it never flickers dim.
-  if(indeterminate && shown<1) dimAmt=0;
-  indeterminate=false; vel = (n<value-50) ? 0 : vel;
-  value=Math.max(0,Math.min(100,n)); }
+  indeterminate=false; value=Math.max(0,Math.min(100,n)); }
  // Busy without a percentage (Verifying/Installing/Updating/Finishing after the download hit 100%):
  // switch to the moving bar so it doesn't look finished. Installomator writes "progress: N" just before
  // the text when it HAS a percentage (pkg installs), so a busy text right after a number keeps the bar.
- var BUSY=/(Verifying|Installing|Updating|Finishing|Mounting|Reporting)/i, UPTODATE=/(Latest version already installed|Already installed from App Store)/i;
+ var BUSY=/(Verifying|Installing|Updating|Finishing|Mounting|Unzipping|Reporting|Waiting)/i, UPTODATE=/(Latest version already installed|Already installed from App Store)/i;
  var lastNum=false;
  function onText(v){
   if(!SHOWVER) v=v.replace(/^v\d[^\s]*\s+/,'');   // "v1.2.4 Downloading..." -> "Downloading..."
   pt.stringValue=v;
   if(UPTODATE.test(v)){ indeterminate=false; value=100; }
   else if(BUSY.test(v) && !lastNum) startBusy(); }
- var seen=0, lastLine=Date.now();
+ // Reads only what was added to the command file since last time (it grows with every download
+ // update), and only up to the last complete line — a half-written line is picked up next time.
+ var offset=0, lastLine=Date.now(), NL=$('\n').dataUsingEncoding($.NSUTF8StringEncoding);
+ function newLines(){
+  var fh=$.NSFileHandle.fileHandleForReadingAtPath(CMD); if(!isOk(fh)) return [];
+  var size=Number(fh.seekToEndOfFile); if(size<offset) offset=0;
+  if(size===offset){ fh.closeFile; return []; }
+  fh.seekToFileOffset(offset); var d=fh.readDataToEndOfFile; fh.closeFile;
+  var n=Number(d.length), r=d.rangeOfDataOptionsRange(NL,1,$.NSMakeRange(0,n));   // 1 = NSDataSearchBackwards
+  var at=Number(r.location); if(!(at>=0 && at<n)) return [];                         // no complete line yet
+  var chunk=d.subdataWithRange($.NSMakeRange(0,at+1)); offset+=at+1;
+  var s=$.NSString.alloc.initWithDataEncoding(chunk,$.NSUTF8StringEncoding); if(!isOk(s)) return [];
+  var a=ObjC.unwrap(s).split('\n'); a.pop(); return a; }
  function poll(){
-  var s=$.NSString.stringWithContentsOfFileEncodingError(CMD,$.NSUTF8StringEncoding,null); if(!isOk(s)) return;
-  var lines=ObjC.unwrap(s).split('\n'), full=lines.length-1;   // the last piece may still be being written
-  if(full<seen) seen=0;
-  if(seen<full) lastLine=Date.now();
-  // Download finished but Installomator is quiet (mounting the DMG, checking it): after 1s, show the
-  // moving bar instead of a full one that looks done.
-  else if(!indeterminate && value>=100 && /Downloading/i.test(ObjC.unwrap(pt.stringValue)) && Date.now()-lastLine>1000) startBusy();
-  for(; seen<full; seen++){
-   var m=lines[seen].match(/^\s*([A-Za-z]+):\s?(.*)$/); if(!m) continue;
+  var lines=newLines();
+  if(lines.length) lastLine=Date.now();
+  // Download finished but Installomator is quiet: after 1s, show the moving bar and "Preparing…" instead
+  // of a full bar that still says Downloading.
+  else if(!indeterminate && value>=99.5 && /Downloading/i.test(ObjC.unwrap(pt.stringValue)) && Date.now()-lastLine>1000){
+   startBusy(); pt.stringValue='Preparing…'; }
+  for(var i=0; i<lines.length; i++){
+   var m=lines[i].match(/^\s*([A-Za-z]+):\s?(.*)$/); if(!m) continue;
    var k=m[1].toLowerCase(), v=m[2];
    if(k=='progress'){ setProgress(v); lastNum=/^\s*\d+(\.\d+)?\s*$/.test(v); continue; }
    if(k=='progresstext') onText(v);
@@ -418,16 +440,12 @@ function run(argv){
    else if(k=='quit'){ app.terminate(null); }
    lastNum=false;
   }
-  if(indeterminate || shown!==value || busyAmt!==(indeterminate?1:0) || dimAmt!==(indeterminate?1:0)) wake(); }
- var animTimer=null, sleeping=false;
- function wake(){ if(sleeping && animTimer){ sleeping=false; last=Date.now()/1000; animTimer.fireDate=$.NSDate.date; } }
+  render(); }
+ refreshBarColor(); noAnim(function(){ fill.opacity=0.38; seg.opacity=1; }); tW=0; tFO=0.38; tSO=1; startSweep();
  if(!$.IPTick){ ObjC.registerSubclass({name:'IPTick',superclass:'NSObject',methods:{
-  'tick:':{types:['void',['id']],implementation:function(t){ refreshBarColor(); poll(); }},
-  'anim:':{types:['void',['id']],implementation:function(t){ draw(); }}}}); }
- var tk=$.IPTick.alloc.init;
- [[0.25,'tick:'],[1/60,'anim:']].forEach(function(a){   // common modes: keeps updating while dragged
-  var tm=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(a[0],tk,a[1],null,true);
-  $.NSRunLoop.currentRunLoop.addTimerForMode(tm,$.NSRunLoopCommonModes); if(a[1]=='anim:') animTimer=tm; });
+  'tick:':{types:['void',['id']],implementation:function(t){ refreshBarColor(); poll(); }}}}); }
+ var tk=$.IPTick.alloc.init, tm=$.NSTimer.timerWithTimeIntervalTargetSelectorUserInfoRepeats(0.25,tk,'tick:',null,true);
+ tm.tolerance=0.02; $.NSRunLoop.currentRunLoop.addTimerForMode(tm,$.NSRunLoopCommonModes);   // common modes: keeps updating while dragged
 
  // Position (--position)
  var vf=$.NSScreen.mainScreen.visibleFrame, x0=vf.origin.x, y0=vf.origin.y, vw=vf.size.width, vh=vf.size.height;
@@ -447,6 +465,13 @@ start_ui() {
   launchctl asuser "$consoleUID" sudo -u "$consoleUser" \
     osascript -l JavaScript "$UI_SCRIPT" "$CMD_FILE" "$1" "$iconFile" "$overlayFile" "$WINDOW_POSITION" "$SHOW_VERSION" "$barColorArg" "$WINDOW_STYLE" >/dev/null 2>&1 &
   UI_STARTED=1
+  # Policies run from Self Service / Jamf can be background-priority, and the window inherits that, so its
+  # animation gets throttled. Once it's up, give it normal priority (best effort; harmless if it already has it).
+  ( for i in {1..20}; do
+      uiPID=$(pgrep -u "$consoleUID" -f "osascript -l JavaScript $UI_SCRIPT" | head -n 1)
+      [[ -n "$uiPID" ]] && { taskpolicy -B -t 0 -l 0 -p "$uiPID"; break; }
+      sleep 0.25
+    done ) >/dev/null 2>&1 &
   log "Window:         opened for $consoleUser"
 }
 
@@ -552,9 +577,19 @@ prepare_installomator() {
       fi ;;
   esac
 
-  # Run a copy whose swiftDialog check points at /usr/bin/true, so it writes progress to our window.
+  # Run a copy of Installomator (the one in INSTALLOMATOR_DIR is never changed) with two tweaks:
+  #  1. its swiftDialog check points at /usr/bin/true, so it writes progress to our window
+  #  2. after telling an open app to quit, it moves on as soon as the app has quit (plus 2s for it to finish
+  #     closing) instead of always sleeping 30 seconds. Still waits up to 30s for an app that's slow to quit.
   RUN_COPY="$SCRATCH/Installomator.sh"
-  sed 's|^DIALOG_CMD="/usr/local/bin/dialog"$|DIALOG_CMD="/usr/bin/true"|' "$INSTALLOMATOR" > "$RUN_COPY"
+  sed -e 's|^DIALOG_CMD="/usr/local/bin/dialog"$|DIALOG_CMD="/usr/bin/true"|' \
+      -e '/printlog "waiting 30 seconds for processes to quit"/{n;s/^\([[:space:]]*\)sleep 30$/\1ipWaitForQuit "$x"/;}' \
+      "$INSTALLOMATOR" > "$RUN_COPY"
+  if grep -q 'ipWaitForQuit "\$x"' "$RUN_COPY"; then   # define the helper right after the #! line
+    sed -i '' '1a\
+ipWaitForQuit() { local i; for i in {1..60}; do pgrep -xq "$1" || { printlog "$1 has quit, continuing"; sleep 2; return 0; }; sleep 0.5; done; }
+' "$RUN_COPY"
+  fi
   chmod 700 "$RUN_COPY"
   grep -q '^DIALOG_CMD="/usr/bin/true"$' "$RUN_COPY" \
     || log "WARNING: couldn't enable progress output in this Installomator version — the window will show status only."
@@ -577,6 +612,22 @@ show_installomator_line() {
     "found app at "*", version "*)      [[ -z "${R[was]}${R[dl]}" ]] && R[was]="${${msg#*, version }%%, on versionKey*}" ;;   # first one = before installing
     "Latest version of "*" is "*)       R[latest]="${msg##* is }" ;;
     "Downloading "*)                    R[dl]=1 ;;   # "found app" lines after this are the result, not what was there before
+    "Downloaded "*" – Type is "*)       # curl is done. Installomator sends no new status until "Installing...",
+                                        # and its last download % can be short of 100 — don't leave "Downloading..." up
+      dialogUpdate "progress: indeterminate"
+      dialogUpdate "progresstext: ${R[latest]:+v${R[latest]// /} }Preparing…" ;;
+    # The app is open: Installomator asks the user to quit it (BLOCKING_PROCESS_ACTION), then always waits
+    # 30 seconds. Say so, so the window doesn't sit on "Preparing…" for the whole wait.
+    "found blocking process "*)
+      dialogUpdate "progresstext: ${R[latest]:+v${R[latest]// /} }Waiting for ${msg#found blocking process } to quit…" ;;
+    *" has quit, continuing")            # from our early-exit wait (see RUN_COPY in prepare_installomator)
+      dialogUpdate "progresstext: ${R[latest]:+v${R[latest]// /} }Preparing…" ;;
+    # With NOTIFY=silent Installomator never sends its own "Installing..." / "Updating..." text, so send it here.
+    "Installing "*)
+      if [[ "$lvl" == REQ ]]; then
+        local step="Installing..."; [[ -n "${R[was]}" ]] && step="Updating..."
+        dialogUpdate "progresstext: ${R[latest]:+v${R[latest]// /} }$step"
+      fi ;;
     "Installed "*", version "*)         R[installed]="${msg##*, version }" ;;
     "Installed "*)                      [[ "$lvl" == REQ ]] && R[installed]="${R[latest]:-yes}" ;;
     ("No new version to install"|"No newer version."|*"same as installed."*)  R[uptodate]=1 ;;
